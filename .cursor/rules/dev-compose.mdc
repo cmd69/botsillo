@@ -1,0 +1,24 @@
+---
+description: Entorno de desarrollo — usar siempre el compose de dev
+globs:
+alwaysApply: true
+---
+
+# Entorno de desarrollo
+
+Este repo (`botsillo`) contiene compose de desarrollo y producción en la misma carpeta.
+
+- Usar siempre `docker compose -f docker-compose.dev.yml` para desarrollo
+- Usar `docker compose`, no `docker-compose` (deprecado)
+- Todos los comandos que requieren librerías se ejecutan dentro del contenedor:
+
+```bash
+docker compose -f docker-compose.dev.yml exec botsillo <comando>
+```
+
+Ejemplos:
+- `docker compose -f docker-compose.dev.yml up -d`
+- `docker compose -f docker-compose.dev.yml exec botsillo python -m pytest`
+- `docker compose -f docker-compose.dev.yml logs -f`
+
+O usar los targets del Makefile: `make up-dev`, `make logs-dev`, `make shell`
