@@ -6,6 +6,7 @@ from aiogram.types import BotCommand
 
 from app.config import settings
 from app.handlers import start
+from app.middlewares.auth import AuthMiddleware
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 log = logging.getLogger(__name__)
@@ -21,6 +22,9 @@ async def set_commands(bot: Bot) -> None:
 async def main() -> None:
     bot = Bot(token=settings.TELEGRAM_BOT_TOKEN)
     dp = Dispatcher()
+
+    dp.message.middleware(AuthMiddleware())
+    dp.callback_query.middleware(AuthMiddleware())
 
     dp.include_router(start.router)
 
