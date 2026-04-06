@@ -17,6 +17,13 @@ log = logging.getLogger(__name__)
 SUMMARY_PREFIX = "sm"
 
 
+def _category_emoji_display(raw) -> str:
+    """Evita 'None' en pantalla cuando la API devuelve null o falta emoji."""
+    if raw is None or (isinstance(raw, str) and not raw.strip()):
+        return "-"
+    return str(raw).strip()
+
+
 def _summary_text(year_month: str, data: dict) -> str:
     num_expenses = data.get("count", 0)
     return (
@@ -103,6 +110,7 @@ async def show_list(callback: CallbackQuery, state: FSMContext, user: User) -> N
 
     txs = await get_transactions(user.id, year_month=year_month)
     filtered = [t for t in txs if t["type"] == tx_type]
+    filtered.sort(key=lambda t: (t.get("date") or "", str(t.get("id", ""))))
 
     if not filtered:
         emoji = "💸" if tx_type == "expense" else "💰"
@@ -119,7 +127,7 @@ async def show_list(callback: CallbackQuery, state: FSMContext, user: User) -> N
     lines = [f"{emoji} {label} de {year_month}:\n"]
 
     for tx in filtered:
-        cat_emoji = tx.get("category_emoji", "")
+        cat_emoji = _category_emoji_display(tx.get("category_emoji"))
         cat_name = tx.get("category_name", "")
         desc = tx.get("description", "")
         amount = tx["amount"]
@@ -130,7 +138,7 @@ async def show_list(callback: CallbackQuery, state: FSMContext, user: User) -> N
             day = date_str
 
         cat_label = f"{cat_emoji} {cat_name}".strip() if cat_name else desc or "-"
-        lines.append(f"  <b>{day}</b>  {amount}€  {cat_label}")
+        lines.append(f"  <b>{day}</b>  {cat_label}  {amount}€")
 
     await callback.message.edit_text(
         "\n".join(lines), reply_markup=_list_back_kb(year_month), parse_mode="HTML"
@@ -198,7 +206,7 @@ async def show_recent(callback: CallbackQuery, user: User) -> None:
 
     lines = ["📋 Ultimas transacciones:\n"]
     for tx in data:
-        emoji = tx.get("category_emoji", "")
+        emoji = _category_emoji_display(tx.get("category_emoji"))
         cat = tx.get("category_name", "")
         desc = tx.get("description", "")
         amount = tx["amount"]
