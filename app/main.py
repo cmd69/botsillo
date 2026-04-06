@@ -5,7 +5,7 @@ from aiogram import Bot, Dispatcher
 from aiogram.types import BotCommand
 
 from app.config import settings
-from app.handlers import start, menu, expense, income
+from app.handlers import start, menu, expense, income, query
 from app.middlewares.auth import AuthMiddleware
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -30,6 +30,7 @@ async def main() -> None:
     dp.include_router(menu.router)
     dp.include_router(expense.router)
     dp.include_router(income.router)
+    dp.include_router(query.router)
 
     await set_commands(bot)
     log.info("Botsillo arrancado — polling activo")
