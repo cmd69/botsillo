@@ -1,14 +1,9 @@
-import logging
-from uuid import UUID
-
-from sqlalchemy import BigInteger, Column, DateTime, String, select, text
+from sqlalchemy import BigInteger, Column, String, select
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import DeclarativeBase, sessionmaker
 
 from app.config import settings
-
-log = logging.getLogger(__name__)
 
 _engine = None
 _async_session = None
@@ -41,22 +36,3 @@ async def get_user_by_chat_id(chat_id: int) -> User | None:
             select(User).where(User.telegram_chat_id == chat_id)
         )
         return result.scalar_one_or_none()
-
-
-async def get_user_by_id(user_id: UUID) -> User | None:
-    async with _get_session_factory()() as session:
-        result = await session.execute(
-            select(User).where(User.id == user_id)
-        )
-        return result.scalar_one_or_none()
-
-
-
-async def check_db() -> bool:
-    try:
-        async with _get_session_factory()() as session:
-            await session.execute(text("SELECT 1"))
-        return True
-    except Exception:
-        log.exception("DB health check failed")
-        return False

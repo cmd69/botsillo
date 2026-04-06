@@ -1,4 +1,3 @@
-import logging
 from datetime import date
 from uuid import UUID
 
@@ -8,6 +7,7 @@ from aiogram.types import CallbackQuery, Message
 
 from app.api_client import create_transaction
 from app.db import User
+from app.formatting import fmt_date_ddmmyyyy, parse_positive_amount
 from app.keyboards.amount import amount_kb
 from app.keyboards.common import confirm_cancel_kb, empty_cancel_kb
 from app.keyboards.date_picker import day_step_kb, month_step_kb
@@ -15,13 +15,8 @@ from app.keyboards.main_menu import main_menu_kb
 from app.states import IncomeFlow
 
 router = Router(name="income")
-log = logging.getLogger(__name__)
 
 PREFIX = "id"  # income date
-
-
-def _fmt_date(iso: str) -> str:
-    return date.fromisoformat(iso).strftime("%d/%m/%Y")
 
 
 # --- Entrada ---
@@ -101,12 +96,8 @@ async def quick_amount(callback: CallbackQuery, state: FSMContext) -> None:
 
 @router.message(IncomeFlow.amount)
 async def enter_amount(message: Message, state: FSMContext) -> None:
-    raw = message.text.strip().replace(",", ".")
-    try:
-        amount = float(raw)
-        if amount <= 0:
-            raise ValueError
-    except (ValueError, TypeError):
+    amount = parse_positive_amount(message.text or "")
+    if amount is None:
         await message.answer("Formato incorrecto. Ej: 19.86")
         return
 
@@ -144,7 +135,7 @@ async def _show_confirm(message: Message, state: FSMContext) -> None:
 def _confirm_text(data: dict) -> str:
     return (
         f"💰 <b>Nuevo ingreso</b>\n\n"
-        f"<b>Fecha:</b> {_fmt_date(data['selected_date'])}\n"
+        f"<b>Fecha:</b> {fmt_date_ddmmyyyy(data['selected_date'])}\n"
         f"<b>Importe:</b> {data['amount']}€\n"
         f"<b>Descripcion:</b> {data.get('description', '-')}\n\n"
         f"Confirmar?"
@@ -170,7 +161,7 @@ async def confirm_income(callback: CallbackQuery, state: FSMContext) -> None:
     if result:
         text = (
             f"✅ <b>Ingreso guardado</b>\n\n"
-            f"<b>Fecha:</b> {_fmt_date(data['selected_date'])}\n"
+            f"<b>Fecha:</b> {fmt_date_ddmmyyyy(data['selected_date'])}\n"
             f"<b>Importe:</b> {data['amount']}€\n"
             f"<b>Descripcion:</b> {data.get('description', '-')}"
         )

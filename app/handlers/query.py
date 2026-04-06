@@ -7,6 +7,7 @@ from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMar
 
 from app.api_client import get_summary, get_transactions
 from app.db import User
+from app.formatting import category_emoji_display
 from app.keyboards.main_menu import main_menu_kb
 from app.keyboards.month_picker import month_picker_kb
 from app.states import QueryFlow
@@ -15,13 +16,6 @@ router = Router(name="query")
 log = logging.getLogger(__name__)
 
 SUMMARY_PREFIX = "sm"
-
-
-def _category_emoji_display(raw) -> str:
-    """Evita 'None' en pantalla cuando la API devuelve null o falta emoji."""
-    if raw is None or (isinstance(raw, str) and not raw.strip()):
-        return "-"
-    return str(raw).strip()
 
 
 def _summary_text(year_month: str, data: dict) -> str:
@@ -127,7 +121,7 @@ async def show_list(callback: CallbackQuery, state: FSMContext, user: User) -> N
     lines = [f"{emoji} {label} de {year_month}:\n"]
 
     for tx in filtered:
-        cat_emoji = _category_emoji_display(tx.get("category_emoji"))
+        cat_emoji = category_emoji_display(tx.get("category_emoji"))
         cat_name = tx.get("category_name", "")
         desc = tx.get("description", "")
         amount = tx["amount"]
@@ -206,7 +200,7 @@ async def show_recent(callback: CallbackQuery, user: User) -> None:
 
     lines = ["📋 Ultimas transacciones:\n"]
     for tx in data:
-        emoji = _category_emoji_display(tx.get("category_emoji"))
+        emoji = category_emoji_display(tx.get("category_emoji"))
         cat = tx.get("category_name", "")
         desc = tx.get("description", "")
         amount = tx["amount"]

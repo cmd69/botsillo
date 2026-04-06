@@ -30,8 +30,3 @@ def empty_cancel_kb() -> InlineKeyboardMarkup:
         ],
     ])
 
-
-def back_menu_kb() -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="↩️ Atras", callback_data="main_menu")],
-    ])

@@ -5,6 +5,7 @@ from aiogram.types import CallbackQuery, Message
 
 from app import texts
 from app.api_client import get_categories
+from app.category_utils import roots as root_categories
 from app.db import User
 from app.keyboards.categories import categories_kb
 from app.keyboards.date_picker import month_step_kb
@@ -27,7 +28,7 @@ async def cmd_gasto(message: Message, state: FSMContext, user: User) -> None:
     await state.update_data(user_id=str(user.id))
 
     cats = await get_categories(user.id)
-    roots = [c for c in cats if not c.get("parent_category_id")]
+    roots = root_categories(cats)
     if not roots:
         await message.answer(
             "No tienes categorias configuradas en Expensivo.",
@@ -46,3 +47,9 @@ async def cmd_ingreso(message: Message, state: FSMContext, user: User) -> None:
     await state.update_data(user_id=str(user.id))
     await message.answer("Selecciona el mes:", reply_markup=month_step_kb("id"))
     await state.set_state(IncomeFlow.month)
+
+
+@router.callback_query(F.data == "noop")
+async def noop_callback(callback: CallbackQuery) -> None:
+    """Botones decorativos de calendarios y pickers (titulo, dias vacios)."""
+    await callback.answer()
