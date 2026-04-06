@@ -1,4 +1,3 @@
-import logging
 from datetime import date as date_type
 
 from aiogram import F, Router
@@ -13,7 +12,6 @@ from app.keyboards.month_picker import month_picker_kb
 from app.states import QueryFlow
 
 router = Router(name="query")
-log = logging.getLogger(__name__)
 
 SUMMARY_PREFIX = "sm"
 
