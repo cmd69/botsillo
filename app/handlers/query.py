@@ -1,4 +1,5 @@
 import logging
+from datetime import date as date_type
 
 from aiogram import F, Router
 from aiogram.fsm.context import FSMContext
@@ -20,9 +21,9 @@ def _summary_text(year_month: str, data: dict) -> str:
     num_expenses = data.get("count", 0)
     return (
         f"📊 Resumen de {year_month}:\n\n"
-        f"💸 Gastos: {data['total_expenses']}\n"
-        f"💰 Ingresos: {data['total_income']}\n"
-        f"🏦 Ahorro: {data['balance']}\n"
+        f"💸 Gastos: {data['total_expenses']}€\n"
+        f"💰 Ingresos: {data['total_income']}€\n"
+        f"🏦 Ahorro: {data['balance']}€\n"
         f"🔢 Num. gastos: {num_expenses}"
     )
 
@@ -123,12 +124,16 @@ async def show_list(callback: CallbackQuery, state: FSMContext, user: User) -> N
         desc = tx.get("description", "")
         amount = tx["amount"]
         date_str = tx["date"]
+        try:
+            day = date_type.fromisoformat(date_str).strftime("%d")
+        except (ValueError, TypeError):
+            day = date_str
 
         cat_label = f"{cat_emoji} {cat_name}".strip() if cat_name else desc or "-"
-        lines.append(f"  {date_str}  {amount}  {cat_label}")
+        lines.append(f"  <b>{day}</b>  {amount}€  {cat_label}")
 
     await callback.message.edit_text(
-        "\n".join(lines), reply_markup=_list_back_kb(year_month)
+        "\n".join(lines), reply_markup=_list_back_kb(year_month), parse_mode="HTML"
     )
     await callback.answer()
 
@@ -201,8 +206,13 @@ async def show_recent(callback: CallbackQuery, user: User) -> None:
         sign = "💸" if tx_type == "expense" else "💰"
         date_str = tx["date"]
 
+        try:
+            fmt_date = date_type.fromisoformat(date_str).strftime("%d/%m/%Y")
+        except (ValueError, TypeError):
+            fmt_date = date_str
+
         label = f"{emoji} {cat}".strip() if cat else desc or tx_type
-        lines.append(f"  {sign} {date_str}  {amount}  {label}")
+        lines.append(f"  {sign} {fmt_date}  {amount}€  {label}")
 
     await callback.message.edit_text(
         "\n".join(lines),

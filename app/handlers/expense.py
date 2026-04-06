@@ -187,24 +187,29 @@ async def enter_description(message: Message, state: FSMContext) -> None:
 async def skip_description(callback: CallbackQuery, state: FSMContext) -> None:
     await state.update_data(description="-")
     data = await state.get_data()
-    await callback.message.edit_text(_confirm_text(data), reply_markup=confirm_cancel_kb())
+    await callback.message.edit_text(_confirm_text(data), reply_markup=confirm_cancel_kb(), parse_mode="HTML")
     await state.set_state(ExpenseFlow.confirm)
     await callback.answer()
 
 
 async def _show_confirm(message: Message, state: FSMContext) -> None:
     data = await state.get_data()
-    await message.answer(_confirm_text(data), reply_markup=confirm_cancel_kb())
+    await message.answer(_confirm_text(data), reply_markup=confirm_cancel_kb(), parse_mode="HTML")
     await state.set_state(ExpenseFlow.confirm)
+
+
+def _fmt_date(iso: str) -> str:
+    d = date.fromisoformat(iso)
+    return d.strftime("%d/%m/%Y")
 
 
 def _confirm_text(data: dict) -> str:
     return (
-        f"💸 Nuevo gasto:\n\n"
-        f"Categoria: {data['category_name']}\n"
-        f"Fecha: {data['selected_date']}\n"
-        f"Importe: {data['amount']}\n"
-        f"Descripcion: {data.get('description', '-')}\n\n"
+        f"💸 <b>Nuevo gasto</b>\n\n"
+        f"<b>Categoria:</b> {data['category_name']}\n"
+        f"<b>Fecha:</b> {_fmt_date(data['selected_date'])}\n"
+        f"<b>Importe:</b> {data['amount']}€\n"
+        f"<b>Descripcion:</b> {data.get('description', '-')}\n\n"
         f"Confirmar?"
     )
 
@@ -228,15 +233,15 @@ async def confirm_expense(callback: CallbackQuery, state: FSMContext) -> None:
 
     if result:
         text = (
-            f"💸 Gasto guardado:\n\n"
-            f"Categoria: {data['category_name']}\n"
-            f"Fecha: {data['selected_date']}\n"
-            f"Importe: {data['amount']}\n"
-            f"Descripcion: {data.get('description', '-')}"
+            f"✅ <b>Gasto guardado</b>\n\n"
+            f"<b>Categoria:</b> {data['category_name']}\n"
+            f"<b>Fecha:</b> {_fmt_date(data['selected_date'])}\n"
+            f"<b>Importe:</b> {data['amount']}€\n"
+            f"<b>Descripcion:</b> {data.get('description', '-')}"
         )
-        await callback.message.edit_text(text, reply_markup=main_menu_kb())
+        await callback.message.edit_text(text, reply_markup=main_menu_kb(), parse_mode="HTML")
     else:
-        await callback.message.edit_text("Error al guardar el gasto.", reply_markup=main_menu_kb())
+        await callback.message.edit_text("❌ Error al guardar el gasto.", reply_markup=main_menu_kb())
 
     await state.clear()
     await callback.answer()

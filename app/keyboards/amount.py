@@ -8,7 +8,7 @@ def amount_kb() -> InlineKeyboardMarkup:
     rows: list[list[InlineKeyboardButton]] = []
     row: list[InlineKeyboardButton] = []
     for amt in QUICK_AMOUNTS:
-        row.append(InlineKeyboardButton(text=str(amt), callback_data=f"amt:{amt}"))
+        row.append(InlineKeyboardButton(text=f"{amt}€", callback_data=f"amt:{amt}"))
         if len(row) == 3:
             rows.append(row)
             row = []
