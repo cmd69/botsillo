@@ -9,16 +9,16 @@ from aiogram.types import CallbackQuery, Message
 from app.api_client import create_transaction, get_categories
 from app.db import User
 from app.keyboards.amount import amount_kb
-from app.keyboards.calendar import build_calendar, calendar_filter, process_calendar
 from app.keyboards.categories import categories_kb
 from app.keyboards.common import confirm_cancel_kb, empty_cancel_kb
+from app.keyboards.date_picker import day_step_kb, month_step_kb
 from app.keyboards.main_menu import main_menu_kb
 from app.states import ExpenseFlow
 
 router = Router(name="expense")
 log = logging.getLogger(__name__)
 
-CAL_ID = 1
+PREFIX = "ed"  # expense date
 
 
 def _roots(cats: list[dict]) -> list[dict]:
@@ -32,6 +32,10 @@ def _children(cats: list[dict], parent_id: str) -> list[dict]:
 def _cat_label(cat: dict) -> str:
     emoji = cat.get("emoji", "")
     return f"{emoji} {cat['name']}".strip() if emoji else cat["name"]
+
+
+def _fmt_date(iso: str) -> str:
+    return date.fromisoformat(iso).strftime("%d/%m/%Y")
 
 
 # --- Entrada ---
@@ -77,9 +81,10 @@ async def select_category(callback: CallbackQuery, state: FSMContext) -> None:
         )
         await state.set_state(ExpenseFlow.subcategory)
     else:
-        markup, step_text = build_calendar(calendar_id=CAL_ID)
-        await callback.message.edit_text(f"Selecciona {step_text}:", reply_markup=markup)
-        await state.set_state(ExpenseFlow.date)
+        await callback.message.edit_text(
+            "Selecciona el mes:", reply_markup=month_step_kb(PREFIX)
+        )
+        await state.set_state(ExpenseFlow.month)
 
     await callback.answer()
 
@@ -107,9 +112,10 @@ async def select_subcategory(callback: CallbackQuery, state: FSMContext) -> None
         full_name = f"{parent_name} > {_cat_label(subcat)}"
         await state.update_data(category_id=subcat_id, category_name=full_name)
 
-    markup, step_text = build_calendar(calendar_id=CAL_ID)
-    await callback.message.edit_text(f"Selecciona {step_text}:", reply_markup=markup)
-    await state.set_state(ExpenseFlow.date)
+    await callback.message.edit_text(
+        "Selecciona el mes:", reply_markup=month_step_kb(PREFIX)
+    )
+    await state.set_state(ExpenseFlow.month)
     await callback.answer()
 
 
@@ -123,22 +129,38 @@ async def subcategory_page(callback: CallbackQuery, state: FSMContext) -> None:
     await callback.answer()
 
 
-# --- Fecha ---
+# --- Fecha: mes ---
 
-@router.callback_query(ExpenseFlow.date, calendar_filter(calendar_id=CAL_ID))
-async def process_expense_calendar(callback: CallbackQuery, state: FSMContext) -> None:
-    selected_date, markup, step_text = process_calendar(callback.data, calendar_id=CAL_ID)
+@router.callback_query(ExpenseFlow.month, F.data.startswith(f"{PREFIX}:m:"))
+async def select_month(callback: CallbackQuery, state: FSMContext) -> None:
+    ym = callback.data.split(":", 2)[2]  # YYYY-MM
+    year, month = int(ym.split("-")[0]), int(ym.split("-")[1])
+    await state.update_data(cal_year=year, cal_month=month)
+    await callback.message.edit_text(
+        "Selecciona el dia:", reply_markup=day_step_kb(PREFIX, year, month)
+    )
+    await state.set_state(ExpenseFlow.day)
+    await callback.answer()
 
-    if selected_date:
-        await state.update_data(selected_date=selected_date.isoformat())
-        await callback.message.edit_text(
-            "Importe:\nEnvia un mensaje con el importe. Ej: 19.86",
-            reply_markup=amount_kb(),
-        )
-        await state.set_state(ExpenseFlow.amount)
-    elif markup:
-        await callback.message.edit_text(f"Selecciona {step_text}:", reply_markup=markup)
 
+@router.callback_query(ExpenseFlow.month, F.data.startswith(f"{PREFIX}:y:"))
+async def change_year(callback: CallbackQuery) -> None:
+    year = int(callback.data.split(":", 2)[2])
+    await callback.message.edit_reply_markup(reply_markup=month_step_kb(PREFIX, year))
+    await callback.answer()
+
+
+# --- Fecha: dia ---
+
+@router.callback_query(ExpenseFlow.day, F.data.startswith(f"{PREFIX}:d:"))
+async def select_day(callback: CallbackQuery, state: FSMContext) -> None:
+    iso_date = callback.data.split(":", 2)[2]  # YYYY-MM-DD
+    await state.update_data(selected_date=iso_date)
+    await callback.message.edit_text(
+        "Importe:\nEnvia un mensaje con el importe. Ej: 19.86",
+        reply_markup=amount_kb(),
+    )
+    await state.set_state(ExpenseFlow.amount)
     await callback.answer()
 
 
@@ -198,11 +220,6 @@ async def _show_confirm(message: Message, state: FSMContext) -> None:
     await state.set_state(ExpenseFlow.confirm)
 
 
-def _fmt_date(iso: str) -> str:
-    d = date.fromisoformat(iso)
-    return d.strftime("%d/%m/%Y")
-
-
 def _confirm_text(data: dict) -> str:
     return (
         f"💸 <b>Nuevo gasto</b>\n\n"
@@ -251,7 +268,8 @@ async def confirm_expense(callback: CallbackQuery, state: FSMContext) -> None:
 
 @router.callback_query(ExpenseFlow.category, F.data == "cancel")
 @router.callback_query(ExpenseFlow.subcategory, F.data == "cancel")
-@router.callback_query(ExpenseFlow.date, F.data == "cancel")
+@router.callback_query(ExpenseFlow.month, F.data == "cancel")
+@router.callback_query(ExpenseFlow.day, F.data == "cancel")
 @router.callback_query(ExpenseFlow.amount, F.data == "cancel")
 @router.callback_query(ExpenseFlow.description, F.data == "cancel")
 @router.callback_query(ExpenseFlow.confirm, F.data == "cancel")
@@ -281,14 +299,23 @@ async def back_from_subcategory(callback: CallbackQuery, state: FSMContext) -> N
     await callback.answer()
 
 
-@router.callback_query(ExpenseFlow.date, F.data == "back")
-async def back_from_date(callback: CallbackQuery, state: FSMContext) -> None:
+@router.callback_query(ExpenseFlow.month, F.data == "back")
+async def back_from_month(callback: CallbackQuery, state: FSMContext) -> None:
     data = await state.get_data()
     roots = _roots(data.get("all_categories", []))
     await callback.message.edit_text(
         "Selecciona la categoria:", reply_markup=categories_kb(roots)
     )
     await state.set_state(ExpenseFlow.category)
+    await callback.answer()
+
+
+@router.callback_query(ExpenseFlow.day, F.data == "back")
+async def back_from_day(callback: CallbackQuery, state: FSMContext) -> None:
+    await callback.message.edit_text(
+        "Selecciona el mes:", reply_markup=month_step_kb(PREFIX)
+    )
+    await state.set_state(ExpenseFlow.month)
     await callback.answer()
 
 

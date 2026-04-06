@@ -6,15 +6,12 @@ from aiogram.types import CallbackQuery, Message
 from app import texts
 from app.api_client import get_categories
 from app.db import User
-from app.keyboards.calendar import build_calendar
 from app.keyboards.categories import categories_kb
+from app.keyboards.date_picker import month_step_kb
 from app.keyboards.main_menu import main_menu_kb
 from app.states import ExpenseFlow, IncomeFlow
 
 router = Router(name="menu")
-
-CAL_ID_EXPENSE = 1
-CAL_ID_INCOME = 2
 
 
 @router.callback_query(F.data == "main_menu")
@@ -47,6 +44,5 @@ async def cmd_gasto(message: Message, state: FSMContext, user: User) -> None:
 async def cmd_ingreso(message: Message, state: FSMContext, user: User) -> None:
     await state.clear()
     await state.update_data(user_id=str(user.id))
-    markup, step_text = build_calendar(calendar_id=CAL_ID_INCOME)
-    await message.answer(f"Selecciona {step_text}:", reply_markup=markup)
-    await state.set_state(IncomeFlow.date)
+    await message.answer("Selecciona el mes:", reply_markup=month_step_kb("id"))
+    await state.set_state(IncomeFlow.month)

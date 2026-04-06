@@ -9,15 +9,19 @@ from aiogram.types import CallbackQuery, Message
 from app.api_client import create_transaction
 from app.db import User
 from app.keyboards.amount import amount_kb
-from app.keyboards.calendar import build_calendar, calendar_filter, process_calendar
 from app.keyboards.common import confirm_cancel_kb, empty_cancel_kb
+from app.keyboards.date_picker import day_step_kb, month_step_kb
 from app.keyboards.main_menu import main_menu_kb
 from app.states import IncomeFlow
 
 router = Router(name="income")
 log = logging.getLogger(__name__)
 
-CAL_ID = 2
+PREFIX = "id"  # income date
+
+
+def _fmt_date(iso: str) -> str:
+    return date.fromisoformat(iso).strftime("%d/%m/%Y")
 
 
 # --- Entrada ---
@@ -26,28 +30,45 @@ CAL_ID = 2
 async def start_income(callback: CallbackQuery, state: FSMContext, user: User) -> None:
     await state.clear()
     await state.update_data(user_id=str(user.id))
-    markup, step_text = build_calendar(calendar_id=CAL_ID)
-    await callback.message.edit_text(f"Selecciona {step_text}:", reply_markup=markup)
-    await state.set_state(IncomeFlow.date)
+    await callback.message.edit_text(
+        "Selecciona el mes:", reply_markup=month_step_kb(PREFIX)
+    )
+    await state.set_state(IncomeFlow.month)
     await callback.answer()
 
 
-# --- Fecha ---
+# --- Fecha: mes ---
 
-@router.callback_query(IncomeFlow.date, calendar_filter(calendar_id=CAL_ID))
-async def process_income_calendar(callback: CallbackQuery, state: FSMContext) -> None:
-    selected_date, markup, step_text = process_calendar(callback.data, calendar_id=CAL_ID)
+@router.callback_query(IncomeFlow.month, F.data.startswith(f"{PREFIX}:m:"))
+async def select_month(callback: CallbackQuery, state: FSMContext) -> None:
+    ym = callback.data.split(":", 2)[2]
+    year, month = int(ym.split("-")[0]), int(ym.split("-")[1])
+    await state.update_data(cal_year=year, cal_month=month)
+    await callback.message.edit_text(
+        "Selecciona el dia:", reply_markup=day_step_kb(PREFIX, year, month)
+    )
+    await state.set_state(IncomeFlow.day)
+    await callback.answer()
 
-    if selected_date:
-        await state.update_data(selected_date=selected_date.isoformat())
-        await callback.message.edit_text(
-            "Importe:\nEnvia un mensaje con el importe. Ej: 19.86",
-            reply_markup=amount_kb(),
-        )
-        await state.set_state(IncomeFlow.amount)
-    elif markup:
-        await callback.message.edit_text(f"Selecciona {step_text}:", reply_markup=markup)
 
+@router.callback_query(IncomeFlow.month, F.data.startswith(f"{PREFIX}:y:"))
+async def change_year(callback: CallbackQuery) -> None:
+    year = int(callback.data.split(":", 2)[2])
+    await callback.message.edit_reply_markup(reply_markup=month_step_kb(PREFIX, year))
+    await callback.answer()
+
+
+# --- Fecha: dia ---
+
+@router.callback_query(IncomeFlow.day, F.data.startswith(f"{PREFIX}:d:"))
+async def select_day(callback: CallbackQuery, state: FSMContext) -> None:
+    iso_date = callback.data.split(":", 2)[2]
+    await state.update_data(selected_date=iso_date)
+    await callback.message.edit_text(
+        "Importe:\nEnvia un mensaje con el importe. Ej: 19.86",
+        reply_markup=amount_kb(),
+    )
+    await state.set_state(IncomeFlow.amount)
     await callback.answer()
 
 
@@ -107,11 +128,6 @@ async def _show_confirm(message: Message, state: FSMContext) -> None:
     await state.set_state(IncomeFlow.confirm)
 
 
-def _fmt_date(iso: str) -> str:
-    d = date.fromisoformat(iso)
-    return d.strftime("%d/%m/%Y")
-
-
 def _confirm_text(data: dict) -> str:
     return (
         f"💰 <b>Nuevo ingreso</b>\n\n"
@@ -155,7 +171,8 @@ async def confirm_income(callback: CallbackQuery, state: FSMContext) -> None:
 
 # --- Cancel: vuelve al menu ---
 
-@router.callback_query(IncomeFlow.date, F.data == "cancel")
+@router.callback_query(IncomeFlow.month, F.data == "cancel")
+@router.callback_query(IncomeFlow.day, F.data == "cancel")
 @router.callback_query(IncomeFlow.amount, F.data == "cancel")
 @router.callback_query(IncomeFlow.description, F.data == "cancel")
 @router.callback_query(IncomeFlow.confirm, F.data == "cancel")
@@ -167,8 +184,17 @@ async def cancel_income(callback: CallbackQuery, state: FSMContext) -> None:
 
 # --- Back: vuelve al paso anterior ---
 
-@router.callback_query(IncomeFlow.date, F.data == "back")
-async def back_from_date(callback: CallbackQuery, state: FSMContext) -> None:
+@router.callback_query(IncomeFlow.month, F.data == "back")
+async def back_from_month(callback: CallbackQuery, state: FSMContext) -> None:
     await state.clear()
     await callback.message.edit_text("Que quieres hacer?", reply_markup=main_menu_kb())
+    await callback.answer()
+
+
+@router.callback_query(IncomeFlow.day, F.data == "back")
+async def back_from_day(callback: CallbackQuery, state: FSMContext) -> None:
+    await callback.message.edit_text(
+        "Selecciona el mes:", reply_markup=month_step_kb(PREFIX)
+    )
+    await state.set_state(IncomeFlow.month)
     await callback.answer()
