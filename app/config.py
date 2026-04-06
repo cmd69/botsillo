@@ -7,6 +7,8 @@ class Settings(BaseSettings):
     API_BASE_URL: str  # Debe venir de .env, no hardcodeado
     SECRET_KEY: str
     ALGORITHM: str = "HS256"
+    # Web de Expensivo (enlaces en mensajes del bot)
+    EXPENSIVE_WEB_URL: str = "https://expensivo.altoke.top"
 
     model_config = {"env_file": ".env", "case_sensitive": True}
 

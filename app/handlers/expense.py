@@ -5,7 +5,9 @@ from aiogram import F, Router
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
 
+from app import texts
 from app.api_client import create_transaction, get_categories
+from app.config import settings
 from app.category_utils import (
     category_button_label,
     children as child_categories,
@@ -255,6 +257,7 @@ async def confirm_expense(callback: CallbackQuery, state: FSMContext) -> None:
             f"<b>Fecha:</b> {fmt_date_ddmmyyyy(data['selected_date'])}\n"
             f"<b>Importe:</b> {data['amount']}€\n"
             f"<b>Descripcion:</b> {data.get('description', '-')}"
+            f"{texts.expense_saved_web_link_html(settings.EXPENSIVE_WEB_URL)}"
         )
         await callback.message.edit_text(text, reply_markup=main_menu_kb(), parse_mode="HTML")
     else:
