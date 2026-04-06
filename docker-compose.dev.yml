@@ -19,4 +19,4 @@ services:
 networks:
   expensivo_net:
     external: true
-    name: expense_network_dev
+    name: expensivo-dev_expense_network_dev

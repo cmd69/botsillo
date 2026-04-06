@@ -1,79 +1,82 @@
-"""Teclados inline para seleccion de mes y dia."""
-from datetime import date, timedelta
+"""Wrapper sobre python-telegram-bot-calendar para aiogram v3.
+
+Usa DetailedTelegramCalendar para seleccion completa de fecha (year -> month -> day).
+Convierte el markup dict de la libreria a InlineKeyboardMarkup de aiogram.
+"""
+import json
+from datetime import date
 
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+from telegram_bot_calendar import DetailedTelegramCalendar, LSTEP
 
-from app.keyboards.common import back_cancel_row
+# Re-exportar para uso en handlers
+__all__ = ["DetailedTelegramCalendar", "LSTEP", "build_calendar", "process_calendar", "calendar_filter", "to_aiogram_markup"]
 
-MONTHS_ES = [
-    "Ene", "Feb", "Mar", "Abr", "May", "Jun",
-    "Jul", "Ago", "Sep", "Oct", "Nov", "Dic",
-]
-
-
-def month_picker_kb(year: int | None = None, prefix: str = "month") -> InlineKeyboardMarkup:
-    """Teclado 4x3 con los meses del anyo. callback_data = '<prefix>:YYYY-MM'."""
-    if year is None:
-        year = date.today().year
-
-    year_prefix = f"{prefix}_year" if prefix != "month" else "year"
-
-    rows: list[list[InlineKeyboardButton]] = []
-    for row_start in range(0, 12, 4):
-        row = []
-        for i in range(row_start, row_start + 4):
-            month_num = i + 1
-            label = MONTHS_ES[i]
-            cb = f"{prefix}:{year}-{month_num:02d}"
-            row.append(InlineKeyboardButton(text=label, callback_data=cb))
-        rows.append(row)
-
-    # Navegacion de anyo
-    rows.append([
-        InlineKeyboardButton(text=f"< {year - 1}", callback_data=f"{year_prefix}:{year - 1}"),
-        InlineKeyboardButton(text=str(year), callback_data="noop"),
-        InlineKeyboardButton(text=f"{year + 1} >", callback_data=f"{year_prefix}:{year + 1}"),
-    ])
-    rows.append(back_cancel_row())
-    return InlineKeyboardMarkup(inline_keyboard=rows)
+# Textos en espanol para los pasos
+LSTEP_ES = {
+    "y": "el anyo",
+    "m": "el mes",
+    "d": "el dia",
+}
 
 
-def day_picker_kb(year: int, month: int) -> InlineKeyboardMarkup:
-    """Teclado con dias del mes en grid 7 columnas (L-D). callback_data = 'day:DD'."""
-    first = date(year, month, 1)
-    # Calcular ultimo dia del mes
-    if month == 12:
-        last_day = 31
+def to_aiogram_markup(calendar_markup) -> InlineKeyboardMarkup | None:
+    """Convierte el markup de telegram-bot-calendar a InlineKeyboardMarkup de aiogram."""
+    if calendar_markup is None:
+        return None
+
+    if isinstance(calendar_markup, str):
+        data = json.loads(calendar_markup)
+    elif isinstance(calendar_markup, dict):
+        data = calendar_markup
     else:
-        last_day = (date(year, month + 1, 1) - timedelta(days=1)).day
+        data = calendar_markup
 
-    # Header dias de la semana
-    dow_labels = ["L", "M", "X", "J", "V", "S", "D"]
-    rows: list[list[InlineKeyboardButton]] = [
-        [InlineKeyboardButton(text=d, callback_data="noop") for d in dow_labels]
-    ]
-
-    # Offset del primer dia (lunes=0)
-    offset = first.weekday()
-    current_row: list[InlineKeyboardButton] = []
-
-    # Espacios vacios antes del dia 1
-    for _ in range(offset):
-        current_row.append(InlineKeyboardButton(text=" ", callback_data="noop"))
-
-    for day in range(1, last_day + 1):
-        current_row.append(
-            InlineKeyboardButton(text=str(day), callback_data=f"day:{day:02d}")
-        )
-        if len(current_row) == 7:
-            rows.append(current_row)
-            current_row = []
-
-    # Rellenar ultima fila
-    while len(current_row) > 0 and len(current_row) < 7:
-        current_row.append(InlineKeyboardButton(text=" ", callback_data="noop"))
-    if current_row:
-        rows.append(current_row)
-
-    rows.append(back_cancel_row())
+    rows = []
+    for row in data.get("inline_keyboard", []):
+        buttons = []
+        for btn in row:
+            buttons.append(InlineKeyboardButton(
+                text=str(btn["text"]),
+                callback_data=str(btn.get("callback_data", "noop")),
+            ))
+        rows.append(buttons)
     return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def build_calendar(calendar_id: int = 0, min_date: date | None = None, max_date: date | None = None) -> tuple[InlineKeyboardMarkup, str]:
+    """Construye un calendario y retorna (markup_aiogram, step_text_es)."""
+    kwargs = {"calendar_id": calendar_id}
+    if min_date:
+        kwargs["min_date"] = min_date
+    if max_date:
+        kwargs["max_date"] = max_date
+
+    calendar, step = DetailedTelegramCalendar(**kwargs).build()
+    markup = to_aiogram_markup(calendar)
+    step_text = LSTEP_ES.get(LSTEP[step], LSTEP[step])
+    return markup, step_text
+
+
+def process_calendar(callback_data: str, calendar_id: int = 0, min_date: date | None = None, max_date: date | None = None) -> tuple[date | None, InlineKeyboardMarkup | None, str | None]:
+    """Procesa un callback del calendario.
+
+    Retorna (selected_date, next_markup, step_text_es).
+    - Si selected_date no es None, el usuario selecciono una fecha completa.
+    - Si next_markup no es None, hay que actualizar el teclado.
+    """
+    kwargs = {"calendar_id": calendar_id}
+    if min_date:
+        kwargs["min_date"] = min_date
+    if max_date:
+        kwargs["max_date"] = max_date
+
+    result, key, step = DetailedTelegramCalendar(**kwargs).process(callback_data)
+    markup = to_aiogram_markup(key)
+    step_text = LSTEP_ES.get(LSTEP[step], LSTEP[step]) if step is not None else None
+    return result, markup, step_text
+
+
+def calendar_filter(calendar_id: int = 0):
+    """Retorna un callable para filtrar callbacks del calendario en aiogram v3."""
+    return DetailedTelegramCalendar.func(calendar_id=calendar_id)

@@ -4,7 +4,7 @@ from pydantic_settings import BaseSettings
 class Settings(BaseSettings):
     TELEGRAM_BOT_TOKEN: str
     DATABASE_URL: str
-    API_BASE_URL: str = "http://expense_backend_dev:8000"
+    API_BASE_URL: str  # Debe venir de .env, no hardcodeado
     SECRET_KEY: str
     ALGORITHM: str = "HS256"
 

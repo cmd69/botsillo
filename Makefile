@@ -15,6 +15,9 @@ up: ## Iniciar desarrollo con hot-reload
 down: ## Detener desarrollo
 	docker compose $(COMPOSE_DEV) down
 
+down-v: ## Detener desarrollo y borrar volúmenes
+	docker compose $(COMPOSE_DEV) down -v
+
 restart: ## Reiniciar desarrollo
 	docker compose $(COMPOSE_DEV) restart
 

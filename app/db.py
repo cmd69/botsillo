@@ -51,19 +51,6 @@ async def get_user_by_id(user_id: UUID) -> User | None:
         return result.scalar_one_or_none()
 
 
-async def link_telegram(user_id: UUID, chat_id: int) -> bool:
-    """Guarda el telegram_chat_id en el usuario. Retorna True si OK."""
-    async with _get_session_factory()() as session:
-        result = await session.execute(
-            select(User).where(User.id == user_id)
-        )
-        user = result.scalar_one_or_none()
-        if not user:
-            return False
-        user.telegram_chat_id = chat_id
-        await session.commit()
-        return True
-
 
 async def check_db() -> bool:
     try:

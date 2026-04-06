@@ -2,17 +2,15 @@ from aiogram.fsm.state import State, StatesGroup
 
 
 class ExpenseFlow(StatesGroup):
-    month = State()
+    date = State()
     category = State()
-    day = State()
     amount = State()
     description = State()
     confirm = State()
 
 
 class IncomeFlow(StatesGroup):
-    month = State()
-    day = State()
+    date = State()
     amount = State()
     description = State()
     confirm = State()

@@ -10,7 +10,7 @@ from app import texts
 from app.auth import create_bot_token
 from app.config import settings
 from app.db import User
-from app.keyboards.calendar import month_picker_kb
+from app.keyboards.month_picker import month_picker_kb
 
 router = Router(name="query")
 log = logging.getLogger(__name__)
