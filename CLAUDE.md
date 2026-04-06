@@ -115,9 +115,9 @@ Ver `.env.example`. Variables minimas:
 | `SECRET_KEY` | Misma que expensivo, para JWT compatibles |
 | `DB_USER` | Usuario de Postgres de expensivo |
 | `DB_PASSWORD` | Password de Postgres de expensivo |
-| `DB_HOST` | Nombre del contenedor postgres (`expensivo_postgres_dev`) |
+| `DB_HOST` | Nombre del contenedor postgres (`expense_postgres_dev`) |
 | `DB_NAME` | Nombre de la base de datos (`expensivo_db`) |
-| `API_BASE_URL` | URL del backend de expensivo (`http://expensivo_backend_dev:8000`) |
+| `API_BASE_URL` | URL del backend de expensivo (`http://expense_backend_dev:8000`) |
 
 ## Puertos
 

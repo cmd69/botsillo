@@ -29,7 +29,7 @@ services:
     environment:
       - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
       - DATABASE_URL=postgresql+asyncpg://${DB_USER}:${DB_PASSWORD}@${DB_HOST}:5432/${DB_NAME}
-      - API_BASE_URL=http://expensivo_backend_dev:8000
+      - API_BASE_URL=http://expense_backend_dev:8000
       - SECRET_KEY=${SECRET_KEY}
     networks:
       - expensivo_net
@@ -48,7 +48,7 @@ TELEGRAM_BOT_TOKEN=          # de BotFather
 SECRET_KEY=misma_que_expensivo  # para generar JWT compatibles
 DB_USER=expensivo_user
 DB_PASSWORD=...
-DB_HOST=expensivo_postgres_dev  # nombre del contenedor postgres de expensivo
+DB_HOST=expense_postgres_dev  # nombre del contenedor postgres de expensivo
 DB_NAME=expensivo_db
 ```
 

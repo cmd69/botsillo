@@ -1,0 +1,22 @@
+services:
+  bot:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: botsillo_bot_dev
+    env_file: .env
+    environment:
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+      - DATABASE_URL=postgresql+asyncpg://${DB_USER:-expense_user}:${DB_PASSWORD:-expense_password}@${DB_HOST:-expense_postgres_dev}:5432/${DB_NAME:-expense_db}
+      - API_BASE_URL=${API_BASE_URL:-http://expense_backend_dev:8000}
+      - SECRET_KEY=${SECRET_KEY}
+    volumes:
+      - ./app:/app/app
+    networks:
+      - expensivo_net
+    restart: "no"
+
+networks:
+  expensivo_net:
+    external: true
+    name: expense_network_dev
