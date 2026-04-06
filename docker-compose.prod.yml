@@ -3,7 +3,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: botsillo_bot
+    container_name: botsillo
     env_file: .env
     environment:
       - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
@@ -22,4 +22,4 @@ services:
 networks:
   expensivo_net:
     external: true
-    name: expense_network
+    name: expensivo_expensivo-network
