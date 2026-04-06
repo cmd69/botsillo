@@ -58,6 +58,19 @@ async def change_year(callback: CallbackQuery) -> None:
     await callback.answer()
 
 
+@router.callback_query(IncomeFlow.month, F.data.startswith(f"{PREFIX}:d:"))
+async def quick_date_from_month(callback: CallbackQuery, state: FSMContext) -> None:
+    """Hoy/Ayer seleccionados desde el paso de mes."""
+    iso_date = callback.data.split(":", 2)[2]
+    await state.update_data(selected_date=iso_date)
+    await callback.message.edit_text(
+        "Importe:\nEnvia un mensaje con el importe. Ej: 19.86",
+        reply_markup=amount_kb(),
+    )
+    await state.set_state(IncomeFlow.amount)
+    await callback.answer()
+
+
 # --- Fecha: dia ---
 
 @router.callback_query(IncomeFlow.day, F.data.startswith(f"{PREFIX}:d:"))
@@ -197,4 +210,23 @@ async def back_from_day(callback: CallbackQuery, state: FSMContext) -> None:
         "Selecciona el mes:", reply_markup=month_step_kb(PREFIX)
     )
     await state.set_state(IncomeFlow.month)
+    await callback.answer()
+
+
+@router.callback_query(IncomeFlow.amount, F.data == "back")
+async def back_from_amount(callback: CallbackQuery, state: FSMContext) -> None:
+    await callback.message.edit_text(
+        "Selecciona el mes:", reply_markup=month_step_kb(PREFIX)
+    )
+    await state.set_state(IncomeFlow.month)
+    await callback.answer()
+
+
+@router.callback_query(IncomeFlow.description, F.data == "back")
+async def back_from_description(callback: CallbackQuery, state: FSMContext) -> None:
+    await callback.message.edit_text(
+        "Importe:\nEnvia un mensaje con el importe. Ej: 19.86",
+        reply_markup=amount_kb(),
+    )
+    await state.set_state(IncomeFlow.amount)
     await callback.answer()

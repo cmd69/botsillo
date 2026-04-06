@@ -14,5 +14,8 @@ def amount_kb() -> InlineKeyboardMarkup:
             row = []
     if row:
         rows.append(row)
-    rows.append([InlineKeyboardButton(text="❌ Cancelar", callback_data="cancel")])
+    rows.append([
+        InlineKeyboardButton(text="↩️ Atras", callback_data="back"),
+        InlineKeyboardButton(text="❌ Cancelar", callback_data="cancel"),
+    ])
     return InlineKeyboardMarkup(inline_keyboard=rows)

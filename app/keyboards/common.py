@@ -23,8 +23,9 @@ def confirm_cancel_kb() -> InlineKeyboardMarkup:
 
 def empty_cancel_kb() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="📭 Vacio", callback_data="skip")],
         [
-            InlineKeyboardButton(text="📭 Vacio", callback_data="skip"),
+            InlineKeyboardButton(text="↩️ Atras", callback_data="back"),
             InlineKeyboardButton(text="❌ Cancelar", callback_data="cancel"),
         ],
     ])
