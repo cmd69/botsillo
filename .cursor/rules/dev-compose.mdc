@@ -8,17 +8,15 @@ alwaysApply: true
 
 Este repo (`botsillo`) contiene compose de desarrollo y producción en la misma carpeta.
 
-- Usar siempre `docker compose -f docker-compose.dev.yml` para desarrollo
+- **Desarrollo:** `docker compose -f docker-compose.dev.yml` o `make up-dev`, `make logs-dev`, `make shell-dev`
+- **Producción:** `docker compose -f docker-compose.prod.yml` o `make up`, `make logs`, `make shell`
 - Usar `docker compose`, no `docker-compose` (deprecado)
-- Todos los comandos que requieren librerías se ejecutan dentro del contenedor:
+- Comandos con dependencias Python/pip dentro del contenedor (servicio `bot`):
 
 ```bash
-docker compose -f docker-compose.dev.yml exec botsillo <comando>
+docker compose -f docker-compose.dev.yml exec bot python -m pytest
 ```
 
 Ejemplos:
-- `docker compose -f docker-compose.dev.yml up -d`
-- `docker compose -f docker-compose.dev.yml exec botsillo python -m pytest`
-- `docker compose -f docker-compose.dev.yml logs -f`
-
-O usar los targets del Makefile: `make up-dev`, `make logs-dev`, `make shell`
+- `make up-dev` / `make logs-dev`
+- `docker compose -f docker-compose.dev.yml exec bot <comando>`

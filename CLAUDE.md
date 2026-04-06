@@ -13,15 +13,27 @@ Bot de Telegram para Expensivo — registro de gastos/ingresos desde el movil co
 
 ## Arrancar
 
+**Desarrollo** (hot-reload `./app`):
+
 ```bash
-make up         # desarrollo (default en -dev)
-make down       # parar
-make logs       # logs
-make build      # rebuild
-make shell      # shell interactivo en el contenedor
+make up-dev
+make logs-dev
+make build-dev
+make shell-dev
+make down-dev
 ```
 
-**Requisito:** expensivo-dev debe estar levantado (`make up-dev` en expensivo-dev).
+**Producción:**
+
+```bash
+make up
+make logs
+make build
+make shell
+make down
+```
+
+**Requisito:** Expensivo levantado en la misma red Docker que declara el compose de este repo (ver `README.md` y `docker-compose.dev.yml` / `docker-compose.prod.yml`).
 
 ## Ejecucion de comandos
 
@@ -30,7 +42,7 @@ make shell      # shell interactivo en el contenedor
 ```bash
 docker compose -f docker-compose.dev.yml exec bot python -m pytest
 docker compose -f docker-compose.dev.yml exec bot pip install <paquete>
-make shell
+make shell-dev   # o make shell en prod
 ```
 
 **Nunca ejecutar `python3`, `pip install` directamente en el host.**
