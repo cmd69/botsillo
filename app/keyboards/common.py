@@ -1,24 +1,22 @@
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
-from app import texts
+
+def cancel_row() -> list[InlineKeyboardButton]:
+    return [InlineKeyboardButton(text="Cancelar", callback_data="cancel")]
 
 
 def back_cancel_row() -> list[InlineKeyboardButton]:
     return [
-        InlineKeyboardButton(text=texts.BTN_BACK, callback_data="back"),
-        InlineKeyboardButton(text=texts.BTN_CANCEL, callback_data="cancel"),
+        InlineKeyboardButton(text="Atras", callback_data="back"),
+        InlineKeyboardButton(text="Cancelar", callback_data="cancel"),
     ]
-
-
-def cancel_button() -> list[InlineKeyboardButton]:
-    return [InlineKeyboardButton(text=texts.BTN_CANCEL, callback_data="cancel")]
 
 
 def confirm_cancel_kb() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
         [
-            InlineKeyboardButton(text=texts.BTN_CONFIRM, callback_data="confirm"),
-            InlineKeyboardButton(text=texts.BTN_CANCEL, callback_data="cancel"),
+            InlineKeyboardButton(text="Confirmar", callback_data="confirm"),
+            InlineKeyboardButton(text="Cancelar", callback_data="cancel"),
         ],
     ])
 
@@ -26,7 +24,13 @@ def confirm_cancel_kb() -> InlineKeyboardMarkup:
 def skip_cancel_kb() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
         [
-            InlineKeyboardButton(text=texts.BTN_SKIP, callback_data="skip"),
-            InlineKeyboardButton(text=texts.BTN_CANCEL, callback_data="cancel"),
+            InlineKeyboardButton(text="Saltar", callback_data="skip"),
+            InlineKeyboardButton(text="Cancelar", callback_data="cancel"),
         ],
+    ])
+
+
+def back_menu_kb() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="Atras", callback_data="main_menu")],
     ])

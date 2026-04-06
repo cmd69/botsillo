@@ -6,75 +6,66 @@ from aiogram import F, Router
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
 
-from app import texts
 from app.api_client import create_transaction
 from app.db import User
 from app.keyboards.calendar import build_calendar, calendar_filter, process_calendar
 from app.keyboards.common import confirm_cancel_kb, skip_cancel_kb
+from app.keyboards.main_menu import main_menu_kb
 from app.states import IncomeFlow
 
 router = Router(name="income")
 log = logging.getLogger(__name__)
 
-CAL_ID = 2  # calendar_id distinto al de expense
+CAL_ID = 2
 
 
-# --- Entrada al flujo ---
+# --- Entrada ---
 
 @router.callback_query(F.data == "menu:income")
 async def start_income(callback: CallbackQuery, state: FSMContext, user: User) -> None:
     await state.clear()
     await state.update_data(user_id=str(user.id))
     markup, step_text = build_calendar(calendar_id=CAL_ID)
-    await callback.message.edit_text(
-        f"Selecciona {step_text}:", reply_markup=markup
-    )
+    await callback.message.edit_text(f"Selecciona {step_text}:", reply_markup=markup)
     await state.set_state(IncomeFlow.date)
     await callback.answer()
 
 
-# --- Fecha (DetailedTelegramCalendar) ---
+# --- Fecha ---
 
 @router.callback_query(IncomeFlow.date, calendar_filter(calendar_id=CAL_ID))
 async def process_income_calendar(callback: CallbackQuery, state: FSMContext) -> None:
     selected_date, markup, step_text = process_calendar(callback.data, calendar_id=CAL_ID)
 
     if selected_date:
-        await state.update_data(
-            selected_date=selected_date.isoformat(),
-            year_month=selected_date.strftime("%Y-%m"),
-        )
-        await callback.message.edit_text(texts.INCOME_ENTER_AMOUNT)
+        await state.update_data(selected_date=selected_date.isoformat())
+        await callback.message.edit_text("Importe:")
         await state.set_state(IncomeFlow.amount)
     elif markup:
-        await callback.message.edit_text(
-            f"Selecciona {step_text}:", reply_markup=markup
-        )
+        await callback.message.edit_text(f"Selecciona {step_text}:", reply_markup=markup)
 
     await callback.answer()
 
 
-# --- Importe ---
+# --- Importe (texto) ---
 
 @router.message(IncomeFlow.amount)
 async def enter_amount(message: Message, state: FSMContext) -> None:
-    text = message.text.strip().replace(",", ".")
+    raw = message.text.strip().replace(",", ".")
     try:
-        amount = float(text)
+        amount = float(raw)
         if amount <= 0:
             raise ValueError
     except (ValueError, TypeError):
-        await message.answer("Introduce un importe valido (ej: 1500.00)")
+        await message.answer("Formato incorrecto. Ejemplo: 10.5")
         return
 
     await state.update_data(amount=amount)
-    await message.answer(
-        texts.INCOME_ENTER_DESC, reply_markup=skip_cancel_kb()
-    )
+    await message.answer("Descripcion:", reply_markup=skip_cancel_kb())
     await state.set_state(IncomeFlow.description)
 
 
-# --- Descripcion ---
+# --- Descripcion (texto o saltar) ---
 
 @router.message(IncomeFlow.description)
 async def enter_description(message: Message, state: FSMContext) -> None:
@@ -85,32 +76,26 @@ async def enter_description(message: Message, state: FSMContext) -> None:
 @router.callback_query(IncomeFlow.description, F.data == "skip")
 async def skip_description(callback: CallbackQuery, state: FSMContext) -> None:
     await state.update_data(description="-")
-    await _show_confirm_cb(callback, state)
+    data = await state.get_data()
+    await callback.message.edit_text(_confirm_text(data), reply_markup=confirm_cancel_kb())
+    await state.set_state(IncomeFlow.confirm)
+    await callback.answer()
 
 
 async def _show_confirm(message: Message, state: FSMContext) -> None:
     data = await state.get_data()
-    text = texts.INCOME_CONFIRM.format(
-        month=data["year_month"],
-        day=data["selected_date"],
-        amount=data["amount"],
-        description=data.get("description", "-"),
-    )
-    await message.answer(text, reply_markup=confirm_cancel_kb())
+    await message.answer(_confirm_text(data), reply_markup=confirm_cancel_kb())
     await state.set_state(IncomeFlow.confirm)
 
 
-async def _show_confirm_cb(callback: CallbackQuery, state: FSMContext) -> None:
-    data = await state.get_data()
-    text = texts.INCOME_CONFIRM.format(
-        month=data["year_month"],
-        day=data["selected_date"],
-        amount=data["amount"],
-        description=data.get("description", "-"),
+def _confirm_text(data: dict) -> str:
+    return (
+        f"Nuevo ingreso:\n\n"
+        f"Fecha: {data['selected_date']}\n"
+        f"Importe: {data['amount']}\n"
+        f"Descripcion: {data.get('description', '-')}\n\n"
+        f"Confirmar?"
     )
-    await callback.message.edit_text(text, reply_markup=confirm_cancel_kb())
-    await state.set_state(IncomeFlow.confirm)
-    await callback.answer()
 
 
 # --- Confirmar ---
@@ -130,15 +115,15 @@ async def confirm_income(callback: CallbackQuery, state: FSMContext) -> None:
     )
 
     if result:
-        await callback.message.edit_text(texts.INCOME_SAVED)
+        await callback.message.edit_text("Ingreso guardado correctamente", reply_markup=main_menu_kb())
     else:
-        await callback.message.edit_text(texts.INCOME_ERROR)
+        await callback.message.edit_text("Error al guardar el ingreso.", reply_markup=main_menu_kb())
 
     await state.clear()
     await callback.answer()
 
 
-# --- Cancel ---
+# --- Cancel: vuelve al menu ---
 
 @router.callback_query(IncomeFlow.date, F.data == "cancel")
 @router.callback_query(IncomeFlow.amount, F.data == "cancel")
@@ -146,5 +131,15 @@ async def confirm_income(callback: CallbackQuery, state: FSMContext) -> None:
 @router.callback_query(IncomeFlow.confirm, F.data == "cancel")
 async def cancel_income(callback: CallbackQuery, state: FSMContext) -> None:
     await state.clear()
-    await callback.message.edit_text(texts.CANCELLED)
+    await callback.message.edit_text("Cancelado.", reply_markup=main_menu_kb())
+    await callback.answer()
+
+
+# --- Back: vuelve al paso anterior ---
+
+@router.callback_query(IncomeFlow.date, F.data == "back")
+async def back_from_date(callback: CallbackQuery, state: FSMContext) -> None:
+    """Desde fecha -> menu principal."""
+    await state.clear()
+    await callback.message.edit_text("Que quieres hacer?", reply_markup=main_menu_kb())
     await callback.answer()

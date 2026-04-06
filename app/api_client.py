@@ -23,8 +23,7 @@ def _get_client() -> httpx.AsyncClient:
 
 
 def _headers(user_id: UUID) -> dict:
-    token = create_bot_token(user_id)
-    return {"Authorization": f"Bearer {token}"}
+    return {"Authorization": f"Bearer {create_bot_token(user_id)}"}
 
 
 async def create_transaction(
@@ -35,7 +34,6 @@ async def create_transaction(
     category_id: UUID | None = None,
     description: str | None = None,
 ) -> dict | None:
-    """Crea una transaccion via API. Retorna el dict o None si falla."""
     payload = {
         "type": tx_type,
         "amount": amount,
@@ -54,20 +52,48 @@ async def create_transaction(
         )
         resp.raise_for_status()
         return resp.json()
-    except httpx.HTTPError:
-        log.exception("Error creando transaccion")
+    except httpx.HTTPError as e:
+        log.error("Error creando transaccion: %s — %s", e, getattr(e, 'response', None) and e.response.text)
         return None
 
 
 async def get_categories(user_id: UUID) -> list[dict]:
-    """Obtiene categorias del usuario via API."""
+    """Obtiene categorias raiz del usuario."""
     try:
         resp = await _get_client().get(
-            "/api/v1/categories/",
+            "/api/v1/categories/roots",
             headers=_headers(user_id),
         )
         resp.raise_for_status()
         return resp.json()
-    except httpx.HTTPError:
-        log.exception("Error obteniendo categorias")
+    except httpx.HTTPError as e:
+        log.error("Error obteniendo categorias: %s — %s", e, getattr(e, 'response', None) and e.response.text)
+        return []
+
+
+async def get_summary(user_id: UUID, year_month: str) -> dict | None:
+    try:
+        resp = await _get_client().get(
+            "/api/v1/transactions/summary",
+            headers=_headers(user_id),
+            params={"year_month": year_month},
+        )
+        resp.raise_for_status()
+        return resp.json()
+    except httpx.HTTPError as e:
+        log.error("Error obteniendo resumen: %s", e)
+        return None
+
+
+async def get_transactions(user_id: UUID, limit: int = 10) -> list[dict]:
+    try:
+        resp = await _get_client().get(
+            "/api/v1/transactions/",
+            headers=_headers(user_id),
+            params={"limit": limit},
+        )
+        resp.raise_for_status()
+        return resp.json()
+    except httpx.HTTPError as e:
+        log.error("Error obteniendo transacciones: %s", e)
         return []

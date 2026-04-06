@@ -9,25 +9,23 @@ from app.db import get_user_by_chat_id
 log = logging.getLogger(__name__)
 
 
-def _user_label(event: TelegramObject) -> str:
-    """Extrae [chat_id] Name para logging."""
+def _user_label(event: TelegramObject) -> tuple[str, str]:
+    """Extrae (chat_id, name) para logging."""
     if isinstance(event, Message) and event.from_user:
         u = event.from_user
-        name = u.full_name or u.username or "?"
-        return f"[{event.chat.id}] {name}"
+        return str(event.chat.id), u.full_name or u.username or "?"
     if isinstance(event, CallbackQuery) and event.from_user:
         u = event.from_user
-        chat_id = event.message.chat.id if event.message else "?"
-        name = u.full_name or u.username or "?"
-        return f"[{chat_id}] {name}"
-    return "[?] unknown"
+        cid = str(event.message.chat.id) if event.message else "?"
+        return cid, u.full_name or u.username or "?"
+    return "?", "unknown"
 
 
 class AuthMiddleware(BaseMiddleware):
     """Autenticacion automatica por telegram_chat_id.
 
     Solo los usuarios con chat_id registrado en la tabla user de expensivo
-    pueden interactuar con el bot. Sin excepciones (ni /start).
+    pueden interactuar con el bot. Sin excepciones.
     """
 
     async def __call__(
@@ -36,28 +34,26 @@ class AuthMiddleware(BaseMiddleware):
         event: TelegramObject,
         data: Dict[str, Any],
     ) -> Any:
-        label = _user_label(event)
+        cid, name = _user_label(event)
 
-        # Extraer chat_id y texto del mensaje
         if isinstance(event, Message):
             chat_id = event.chat.id
             msg_text = event.text or "[no text]"
-            log.info("%s: %s", label, msg_text)
+            log.info("CHAT_ID [%s] %s: %s", cid, name, msg_text)
         elif isinstance(event, CallbackQuery):
             chat_id = event.message.chat.id if event.message else None
-            log.info("%s: callback %s", label, event.data)
+            log.info("CHAT_ID [%s] %s: callback %s", cid, name, event.data)
         else:
             return await handler(event, data)
 
         if chat_id is None:
-            log.warning("%s: no se pudo extraer chat_id", label)
+            log.warning("CHAT_ID [%s] %s: no se pudo extraer chat_id", cid, name)
             return
 
-        # Buscar usuario por chat_id
         try:
             user = await get_user_by_chat_id(chat_id)
         except Exception:
-            log.exception("%s: error consultando DB", label)
+            log.exception("CHAT_ID [%s] %s: error consultando DB", cid, name)
             if isinstance(event, Message):
                 await event.answer("Error interno. Intentalo mas tarde.")
             elif isinstance(event, CallbackQuery):
@@ -65,7 +61,7 @@ class AuthMiddleware(BaseMiddleware):
             return
 
         if not user:
-            log.warning("%s: chat_id NO registrado en expensivo", label)
+            log.warning("CHAT_ID [%s] %s: NO registrado en expensivo", cid, name)
             if isinstance(event, Message):
                 await event.answer(
                     "No tienes acceso a este bot.\n"
@@ -75,6 +71,6 @@ class AuthMiddleware(BaseMiddleware):
                 await event.answer("Sin acceso. Chat ID no registrado.", show_alert=True)
             return
 
-        log.info("%s: autenticado como '%s'", label, user.username)
+        log.info("CHAT_ID [%s] %s: autenticado como '%s'", cid, name, user.username)
         data["user"] = user
         return await handler(event, data)
