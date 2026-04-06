@@ -32,6 +32,6 @@ def month_picker_kb(year: int | None = None, prefix: str = "month") -> InlineKey
         InlineKeyboardButton(text=f"{year + 1} >", callback_data=f"{year_prefix}:{year + 1}"),
     ])
     rows.append([
-        InlineKeyboardButton(text="Volver al menu", callback_data="main_menu"),
+        InlineKeyboardButton(text="↩️ Atras", callback_data="main_menu"),
     ])
     return InlineKeyboardMarkup(inline_keyboard=rows)

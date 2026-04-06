@@ -58,10 +58,10 @@ async def create_transaction(
 
 
 async def get_categories(user_id: UUID) -> list[dict]:
-    """Obtiene categorias raiz del usuario."""
+    """Obtiene todas las categorias del usuario (raiz + hijas)."""
     try:
         resp = await _get_client().get(
-            "/api/v1/categories/roots",
+            "/api/v1/categories/",
             headers=_headers(user_id),
         )
         resp.raise_for_status()
@@ -85,12 +85,17 @@ async def get_summary(user_id: UUID, year_month: str) -> dict | None:
         return None
 
 
-async def get_transactions(user_id: UUID, limit: int = 10) -> list[dict]:
+async def get_transactions(
+    user_id: UUID, limit: int = 100, year_month: str | None = None,
+) -> list[dict]:
+    params: dict = {"limit": limit}
+    if year_month:
+        params["year_month"] = year_month
     try:
         resp = await _get_client().get(
             "/api/v1/transactions/",
             headers=_headers(user_id),
-            params={"limit": limit},
+            params=params,
         )
         resp.raise_for_status()
         return resp.json()

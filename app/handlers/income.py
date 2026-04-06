@@ -8,8 +8,9 @@ from aiogram.types import CallbackQuery, Message
 
 from app.api_client import create_transaction
 from app.db import User
+from app.keyboards.amount import amount_kb
 from app.keyboards.calendar import build_calendar, calendar_filter, process_calendar
-from app.keyboards.common import confirm_cancel_kb, skip_cancel_kb
+from app.keyboards.common import confirm_cancel_kb, empty_cancel_kb
 from app.keyboards.main_menu import main_menu_kb
 from app.states import IncomeFlow
 
@@ -39,7 +40,10 @@ async def process_income_calendar(callback: CallbackQuery, state: FSMContext) ->
 
     if selected_date:
         await state.update_data(selected_date=selected_date.isoformat())
-        await callback.message.edit_text("Importe:")
+        await callback.message.edit_text(
+            "Importe:\nEnvia un mensaje con el importe. Ej: 19.86",
+            reply_markup=amount_kb(),
+        )
         await state.set_state(IncomeFlow.amount)
     elif markup:
         await callback.message.edit_text(f"Selecciona {step_text}:", reply_markup=markup)
@@ -47,7 +51,19 @@ async def process_income_calendar(callback: CallbackQuery, state: FSMContext) ->
     await callback.answer()
 
 
-# --- Importe (texto) ---
+# --- Importe (texto o boton rapido) ---
+
+@router.callback_query(IncomeFlow.amount, F.data.startswith("amt:"))
+async def quick_amount(callback: CallbackQuery, state: FSMContext) -> None:
+    amount = float(callback.data.split(":", 1)[1])
+    await state.update_data(amount=amount)
+    await callback.message.edit_text(
+        "Descripcion:\nEnvia un mensaje con la descripcion.",
+        reply_markup=empty_cancel_kb(),
+    )
+    await state.set_state(IncomeFlow.description)
+    await callback.answer()
+
 
 @router.message(IncomeFlow.amount)
 async def enter_amount(message: Message, state: FSMContext) -> None:
@@ -57,15 +73,18 @@ async def enter_amount(message: Message, state: FSMContext) -> None:
         if amount <= 0:
             raise ValueError
     except (ValueError, TypeError):
-        await message.answer("Formato incorrecto. Ejemplo: 10.5")
+        await message.answer("Formato incorrecto. Ej: 19.86")
         return
 
     await state.update_data(amount=amount)
-    await message.answer("Descripcion:", reply_markup=skip_cancel_kb())
+    await message.answer(
+        "Descripcion:\nEnvia un mensaje con la descripcion.",
+        reply_markup=empty_cancel_kb(),
+    )
     await state.set_state(IncomeFlow.description)
 
 
-# --- Descripcion (texto o saltar) ---
+# --- Descripcion (texto o vacio) ---
 
 @router.message(IncomeFlow.description)
 async def enter_description(message: Message, state: FSMContext) -> None:
@@ -90,7 +109,7 @@ async def _show_confirm(message: Message, state: FSMContext) -> None:
 
 def _confirm_text(data: dict) -> str:
     return (
-        f"Nuevo ingreso:\n\n"
+        f"💰 Nuevo ingreso:\n\n"
         f"Fecha: {data['selected_date']}\n"
         f"Importe: {data['amount']}\n"
         f"Descripcion: {data.get('description', '-')}\n\n"
@@ -115,7 +134,13 @@ async def confirm_income(callback: CallbackQuery, state: FSMContext) -> None:
     )
 
     if result:
-        await callback.message.edit_text("Ingreso guardado correctamente", reply_markup=main_menu_kb())
+        text = (
+            f"💰 Ingreso guardado:\n\n"
+            f"Fecha: {data['selected_date']}\n"
+            f"Importe: {data['amount']}\n"
+            f"Descripcion: {data.get('description', '-')}"
+        )
+        await callback.message.edit_text(text, reply_markup=main_menu_kb())
     else:
         await callback.message.edit_text("Error al guardar el ingreso.", reply_markup=main_menu_kb())
 
@@ -139,7 +164,6 @@ async def cancel_income(callback: CallbackQuery, state: FSMContext) -> None:
 
 @router.callback_query(IncomeFlow.date, F.data == "back")
 async def back_from_date(callback: CallbackQuery, state: FSMContext) -> None:
-    """Desde fecha -> menu principal."""
     await state.clear()
     await callback.message.edit_text("Que quieres hacer?", reply_markup=main_menu_kb())
     await callback.answer()

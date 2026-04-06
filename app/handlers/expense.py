@@ -8,9 +8,10 @@ from aiogram.types import CallbackQuery, Message
 
 from app.api_client import create_transaction, get_categories
 from app.db import User
+from app.keyboards.amount import amount_kb
 from app.keyboards.calendar import build_calendar, calendar_filter, process_calendar
 from app.keyboards.categories import categories_kb
-from app.keyboards.common import confirm_cancel_kb, skip_cancel_kb
+from app.keyboards.common import confirm_cancel_kb, empty_cancel_kb
 from app.keyboards.main_menu import main_menu_kb
 from app.states import ExpenseFlow
 
@@ -20,6 +21,19 @@ log = logging.getLogger(__name__)
 CAL_ID = 1
 
 
+def _roots(cats: list[dict]) -> list[dict]:
+    return [c for c in cats if not c.get("parent_category_id")]
+
+
+def _children(cats: list[dict], parent_id: str) -> list[dict]:
+    return [c for c in cats if str(c.get("parent_category_id", "")) == parent_id]
+
+
+def _cat_label(cat: dict) -> str:
+    emoji = cat.get("emoji", "")
+    return f"{emoji} {cat['name']}".strip() if emoji else cat["name"]
+
+
 # --- Entrada ---
 
 @router.callback_query(F.data == "menu:expense")
@@ -27,9 +41,9 @@ async def start_expense(callback: CallbackQuery, state: FSMContext, user: User) 
     await state.clear()
     await state.update_data(user_id=str(user.id))
 
-    # Cargar categorias al inicio
     cats = await get_categories(user.id)
-    if not cats:
+    roots = _roots(cats)
+    if not roots:
         await callback.message.edit_text(
             "No tienes categorias configuradas en Expensivo.",
             reply_markup=main_menu_kb(),
@@ -37,9 +51,9 @@ async def start_expense(callback: CallbackQuery, state: FSMContext, user: User) 
         await callback.answer()
         return
 
-    await state.update_data(categories=cats)
+    await state.update_data(all_categories=cats)
     await callback.message.edit_text(
-        "Selecciona la categoria:", reply_markup=categories_kb(cats)
+        "Selecciona la categoria:", reply_markup=categories_kb(roots)
     )
     await state.set_state(ExpenseFlow.category)
     await callback.answer()
@@ -51,15 +65,22 @@ async def start_expense(callback: CallbackQuery, state: FSMContext, user: User) 
 async def select_category(callback: CallbackQuery, state: FSMContext) -> None:
     cat_id = callback.data.split(":", 1)[1]
     data = await state.get_data()
-    cats = data.get("categories", [])
+    cats = data.get("all_categories", [])
     cat = next((c for c in cats if str(c["id"]) == cat_id), None)
-    cat_name = f"{cat.get('emoji', '')} {cat['name']}".strip() if cat else "?"
 
-    await state.update_data(category_id=cat_id, category_name=cat_name)
+    await state.update_data(category_id=cat_id, category_name=_cat_label(cat) if cat else "?")
 
-    markup, step_text = build_calendar(calendar_id=CAL_ID)
-    await callback.message.edit_text(f"Selecciona {step_text}:", reply_markup=markup)
-    await state.set_state(ExpenseFlow.date)
+    children = _children(cats, cat_id)
+    if children:
+        await callback.message.edit_text(
+            "Selecciona la subcategoria:", reply_markup=categories_kb(children, prefix="subcat")
+        )
+        await state.set_state(ExpenseFlow.subcategory)
+    else:
+        markup, step_text = build_calendar(calendar_id=CAL_ID)
+        await callback.message.edit_text(f"Selecciona {step_text}:", reply_markup=markup)
+        await state.set_state(ExpenseFlow.date)
+
     await callback.answer()
 
 
@@ -67,7 +88,38 @@ async def select_category(callback: CallbackQuery, state: FSMContext) -> None:
 async def category_page(callback: CallbackQuery, state: FSMContext) -> None:
     page = int(callback.data.split(":", 1)[1])
     data = await state.get_data()
-    await callback.message.edit_reply_markup(reply_markup=categories_kb(data.get("categories", []), page))
+    roots = _roots(data.get("all_categories", []))
+    await callback.message.edit_reply_markup(reply_markup=categories_kb(roots, page))
+    await callback.answer()
+
+
+# --- Subcategoria ---
+
+@router.callback_query(ExpenseFlow.subcategory, F.data.startswith("subcat:"))
+async def select_subcategory(callback: CallbackQuery, state: FSMContext) -> None:
+    subcat_id = callback.data.split(":", 1)[1]
+    data = await state.get_data()
+    cats = data.get("all_categories", [])
+    subcat = next((c for c in cats if str(c["id"]) == subcat_id), None)
+
+    if subcat:
+        parent_name = data.get("category_name", "")
+        full_name = f"{parent_name} > {_cat_label(subcat)}"
+        await state.update_data(category_id=subcat_id, category_name=full_name)
+
+    markup, step_text = build_calendar(calendar_id=CAL_ID)
+    await callback.message.edit_text(f"Selecciona {step_text}:", reply_markup=markup)
+    await state.set_state(ExpenseFlow.date)
+    await callback.answer()
+
+
+@router.callback_query(ExpenseFlow.subcategory, F.data.startswith("subcatpage:"))
+async def subcategory_page(callback: CallbackQuery, state: FSMContext) -> None:
+    page = int(callback.data.split(":", 1)[1])
+    data = await state.get_data()
+    parent_id = data.get("category_id", "")
+    children = _children(data.get("all_categories", []), parent_id)
+    await callback.message.edit_reply_markup(reply_markup=categories_kb(children, page, prefix="subcat"))
     await callback.answer()
 
 
@@ -79,7 +131,10 @@ async def process_expense_calendar(callback: CallbackQuery, state: FSMContext) -
 
     if selected_date:
         await state.update_data(selected_date=selected_date.isoformat())
-        await callback.message.edit_text("Importe:")
+        await callback.message.edit_text(
+            "Importe:\nEnvia un mensaje con el importe. Ej: 19.86",
+            reply_markup=amount_kb(),
+        )
         await state.set_state(ExpenseFlow.amount)
     elif markup:
         await callback.message.edit_text(f"Selecciona {step_text}:", reply_markup=markup)
@@ -87,7 +142,19 @@ async def process_expense_calendar(callback: CallbackQuery, state: FSMContext) -
     await callback.answer()
 
 
-# --- Importe (texto) ---
+# --- Importe (texto o boton rapido) ---
+
+@router.callback_query(ExpenseFlow.amount, F.data.startswith("amt:"))
+async def quick_amount(callback: CallbackQuery, state: FSMContext) -> None:
+    amount = float(callback.data.split(":", 1)[1])
+    await state.update_data(amount=amount)
+    await callback.message.edit_text(
+        "Descripcion:\nEnvia un mensaje con la descripcion.",
+        reply_markup=empty_cancel_kb(),
+    )
+    await state.set_state(ExpenseFlow.description)
+    await callback.answer()
+
 
 @router.message(ExpenseFlow.amount)
 async def enter_amount(message: Message, state: FSMContext) -> None:
@@ -97,15 +164,18 @@ async def enter_amount(message: Message, state: FSMContext) -> None:
         if amount <= 0:
             raise ValueError
     except (ValueError, TypeError):
-        await message.answer("Formato incorrecto. Ejemplo: 10.5")
+        await message.answer("Formato incorrecto. Ej: 19.86")
         return
 
     await state.update_data(amount=amount)
-    await message.answer("Descripcion:", reply_markup=skip_cancel_kb())
+    await message.answer(
+        "Descripcion:\nEnvia un mensaje con la descripcion.",
+        reply_markup=empty_cancel_kb(),
+    )
     await state.set_state(ExpenseFlow.description)
 
 
-# --- Descripcion (texto o saltar) ---
+# --- Descripcion (texto o vacio) ---
 
 @router.message(ExpenseFlow.description)
 async def enter_description(message: Message, state: FSMContext) -> None:
@@ -130,7 +200,7 @@ async def _show_confirm(message: Message, state: FSMContext) -> None:
 
 def _confirm_text(data: dict) -> str:
     return (
-        f"Nuevo gasto:\n\n"
+        f"💸 Nuevo gasto:\n\n"
         f"Categoria: {data['category_name']}\n"
         f"Fecha: {data['selected_date']}\n"
         f"Importe: {data['amount']}\n"
@@ -157,7 +227,14 @@ async def confirm_expense(callback: CallbackQuery, state: FSMContext) -> None:
     )
 
     if result:
-        await callback.message.edit_text("Gasto guardado correctamente", reply_markup=main_menu_kb())
+        text = (
+            f"💸 Gasto guardado:\n\n"
+            f"Categoria: {data['category_name']}\n"
+            f"Fecha: {data['selected_date']}\n"
+            f"Importe: {data['amount']}\n"
+            f"Descripcion: {data.get('description', '-')}"
+        )
+        await callback.message.edit_text(text, reply_markup=main_menu_kb())
     else:
         await callback.message.edit_text("Error al guardar el gasto.", reply_markup=main_menu_kb())
 
@@ -168,6 +245,7 @@ async def confirm_expense(callback: CallbackQuery, state: FSMContext) -> None:
 # --- Cancel: vuelve al menu ---
 
 @router.callback_query(ExpenseFlow.category, F.data == "cancel")
+@router.callback_query(ExpenseFlow.subcategory, F.data == "cancel")
 @router.callback_query(ExpenseFlow.date, F.data == "cancel")
 @router.callback_query(ExpenseFlow.amount, F.data == "cancel")
 @router.callback_query(ExpenseFlow.description, F.data == "cancel")
@@ -182,18 +260,28 @@ async def cancel_expense(callback: CallbackQuery, state: FSMContext) -> None:
 
 @router.callback_query(ExpenseFlow.category, F.data == "back")
 async def back_from_category(callback: CallbackQuery, state: FSMContext) -> None:
-    """Desde categorias -> menu principal."""
     await state.clear()
     await callback.message.edit_text("Que quieres hacer?", reply_markup=main_menu_kb())
     await callback.answer()
 
 
+@router.callback_query(ExpenseFlow.subcategory, F.data == "back")
+async def back_from_subcategory(callback: CallbackQuery, state: FSMContext) -> None:
+    data = await state.get_data()
+    roots = _roots(data.get("all_categories", []))
+    await callback.message.edit_text(
+        "Selecciona la categoria:", reply_markup=categories_kb(roots)
+    )
+    await state.set_state(ExpenseFlow.category)
+    await callback.answer()
+
+
 @router.callback_query(ExpenseFlow.date, F.data == "back")
 async def back_from_date(callback: CallbackQuery, state: FSMContext) -> None:
-    """Desde fecha -> categorias."""
     data = await state.get_data()
+    roots = _roots(data.get("all_categories", []))
     await callback.message.edit_text(
-        "Selecciona la categoria:", reply_markup=categories_kb(data.get("categories", []))
+        "Selecciona la categoria:", reply_markup=categories_kb(roots)
     )
     await state.set_state(ExpenseFlow.category)
     await callback.answer()

@@ -37,8 +37,9 @@ async def global_error_handler(event: ErrorEvent) -> bool:
 
 async def set_commands(bot: Bot) -> None:
     await bot.set_my_commands([
-        BotCommand(command="start", description="Iniciar"),
-        BotCommand(command="menu", description="Menu principal"),
+        BotCommand(command="start", description="Menu principal"),
+        BotCommand(command="gasto", description="Registrar gasto"),
+        BotCommand(command="ingreso", description="Registrar ingreso"),
     ])
 
 
