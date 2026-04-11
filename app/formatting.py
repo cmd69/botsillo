@@ -44,3 +44,29 @@ def parse_positive_decimal(raw: str) -> Decimal | None:
     if d is None or d == 0:
         return None
     return d
+
+
+def fmt_fiat_or_usdt_2dp(val: object) -> str:
+    """EUR, USDT e importes en moneda estable: siempre 2 decimales."""
+    if val is None:
+        return "-"
+    try:
+        d = Decimal(str(val))
+    except (InvalidOperation, ValueError, TypeError):
+        return str(val)
+    quantized = d.quantize(Decimal("0.01"))
+    return format(quantized, "f")
+
+
+def fmt_crypto_qty(val: object) -> str:
+    """Cantidad de cripto/activo (no EUR/USDT como unidad de activo): sin forzar 2 decimales."""
+    if val is None:
+        return "-"
+    try:
+        d = Decimal(str(val))
+    except (InvalidOperation, ValueError, TypeError):
+        return str(val)
+    s = format(d.normalize(), "f")
+    if "." in s:
+        s = s.rstrip("0").rstrip(".")
+    return s or "0"

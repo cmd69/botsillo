@@ -20,7 +20,9 @@ from app.api_client import (
 )
 from app.db import User
 from app.formatting import (
+    fmt_crypto_qty,
     fmt_date_ddmmyyyy,
+    fmt_fiat_or_usdt_2dp,
     parse_non_negative_decimal,
     parse_positive_decimal,
 )
@@ -46,16 +48,6 @@ PFC_DATE_PREFIX = "pfc"
 _MAX_MSG = 3900
 
 
-def _fmt_num(val: object) -> str:
-    if val is None:
-        return "-"
-    try:
-        d = Decimal(str(val))
-    except Exception:
-        return str(val)
-    return format(d.normalize(), "f").rstrip("0").rstrip(".") or "0"
-
-
 def _usdt_qty(assets: list[dict]) -> Decimal:
     for a in assets:
         if (a.get("symbol") or "").upper() == "USDT":
@@ -71,12 +63,12 @@ def _summary_ficha_text(name: str, summary: dict) -> str:
     usdt = _usdt_qty(assets)
     lines = [
         f"🏦 <b>{name}</b>\n",
-        f"💶 Aportado: <b>{_fmt_num(summary.get('total_contributed'))}</b> €",
-        f"📊 Invertido: <b>{_fmt_num(summary.get('total_invested'))}</b>",
-        f"💹 Valor actual: <b>{_fmt_num(summary.get('current_value'))}</b>",
-        f"📈 P/L: <b>{_fmt_num(summary.get('profit_loss'))}</b>",
-        f"📉 ROI: <b>{_fmt_num(summary.get('roi_percentage'))}</b> %",
-        f"\n💵 <b>USDT disponible:</b> {_fmt_num(usdt)}",
+        f"💶 Aportado: <b>{fmt_fiat_or_usdt_2dp(summary.get('total_contributed'))}</b> €",
+        f"📊 Invertido: <b>{fmt_fiat_or_usdt_2dp(summary.get('total_invested'))}</b>",
+        f"💹 Valor actual: <b>{fmt_fiat_or_usdt_2dp(summary.get('current_value'))}</b>",
+        f"📈 P/L: <b>{fmt_fiat_or_usdt_2dp(summary.get('profit_loss'))}</b>",
+        f"📉 ROI: <b>{fmt_fiat_or_usdt_2dp(summary.get('roi_percentage'))}</b> %",
+        f"\n💵 <b>USDT disponible:</b> {fmt_fiat_or_usdt_2dp(usdt)}",
     ]
     return "\n".join(lines)
 
@@ -94,7 +86,7 @@ def _details_full_text(d: dict) -> str:
             sym = a.get("symbol", "?")
             aname = a.get("name", "")
             price = a.get("current_price")
-            parts.append(f"  • <b>{sym}</b> {aname} — precio {_fmt_num(price)}")
+            parts.append(f"  • <b>{sym}</b> {aname} — precio {fmt_fiat_or_usdt_2dp(price)}")
         if len(assets) > 30:
             parts.append(f"  … y {len(assets) - 30} mas (ver en Expensivo)")
 
@@ -111,7 +103,7 @@ def _details_full_text(d: dict) -> str:
             amt = c.get("amount")
             cdate = c.get("date", "")
             desc = (c.get("description") or "-")[:40]
-            parts.append(f"  • {cdate}  {_fmt_num(amt)} €  {desc}")
+            parts.append(f"  • {cdate}  {fmt_fiat_or_usdt_2dp(amt)} €  {desc}")
         if len(contribs) > 15:
             parts.append(f"  … y {len(contribs) - 15} mas en la web")
 
@@ -123,6 +115,77 @@ def _details_full_text(d: dict) -> str:
 
 def _op_kind_label(op_api_type: str) -> str:
     return "Compra (gasto USDT)" if op_api_type == "buy" else "Venta (ingreso USDT)"
+
+
+def _tx_success_message(result: dict, data: dict) -> str:
+    wname = data.get("wallet_name") or "—"
+    sym = (data.get("asset_symbol") or "?").upper()
+    aname = (data.get("asset_name") or "").strip()
+    act_line = f"📌 <b>Activo:</b> {sym}"
+    if aname:
+        act_line += f" — {aname}"
+
+    op_type = str(result.get("type", data.get("op_api_type", "buy")))
+    raw_d = result.get("date") or data.get("op_date")
+    try:
+        d_fmt = fmt_date_ddmmyyyy(str(raw_d)[:10])
+    except (ValueError, TypeError):
+        d_fmt = str(raw_d)
+
+    notes = result.get("notes") or data.get("op_notes") or ""
+    notes_line = f"\n📝 <b>Notas:</b> {notes}" if str(notes).strip() else ""
+
+    ae = result.get("amount_eur")
+    ae_line = ""
+    if ae is not None:
+        ae_line = f"\n💶 <b>Equiv. EUR:</b> {fmt_fiat_or_usdt_2dp(ae)} €"
+
+    return (
+        "✅ <b>Transaccion registrada</b>\n\n"
+        f"🏦 <b>Billetera:</b> {wname}\n"
+        f"{act_line}\n"
+        f"📊 <b>Tipo:</b> {_op_kind_label(op_type)}\n"
+        f"🔢 <b>Cantidad:</b> {fmt_crypto_qty(result.get('quantity'))}\n"
+        f"💵 <b>Precio/u (USDT):</b> {fmt_fiat_or_usdt_2dp(result.get('price_per_unit'))}\n"
+        f"💰 <b>Total (USDT):</b> {fmt_fiat_or_usdt_2dp(result.get('total_amount'))}\n"
+        f"📎 <b>Comisiones:</b> {fmt_fiat_or_usdt_2dp(result.get('fees'))}\n"
+        f"📅 <b>Fecha:</b> {d_fmt}"
+        f"{ae_line}"
+        f"{notes_line}"
+    )
+
+
+def _mov_success_message(result: dict, data: dict) -> str:
+    wname = data.get("wallet_name") or "—"
+    bname = data.get("mov_bank_name") or "—"
+    sign = int(data.get("mov_sign", 1))
+    label = "Aporte a la billetera" if sign > 0 else "Retirada de la billetera"
+
+    raw_d = result.get("date") or data.get("mov_date")
+    try:
+        d_fmt = fmt_date_ddmmyyyy(str(raw_d)[:10])
+    except (ValueError, TypeError):
+        d_fmt = str(raw_d)
+
+    amt = result.get("amount", data.get("mov_amount_eur"))
+    desc = result.get("description") or data.get("mov_description") or ""
+    desc_line = f"\n📝 <b>Descripcion:</b> {desc}" if str(desc).strip() else ""
+
+    ausd = result.get("amount_usd")
+    usd_line = ""
+    if ausd is not None:
+        usd_line = f"\n💵 <b>Equiv. USD:</b> {fmt_fiat_or_usdt_2dp(ausd)}"
+
+    return (
+        "✅ <b>Movimiento registrado</b>\n\n"
+        f"🏦 <b>Billetera:</b> {wname}\n"
+        f"🏛 <b>Cuenta bancaria:</b> {bname}\n"
+        f"💶 <b>Tipo:</b> {label}\n"
+        f"💰 <b>Importe:</b> {fmt_fiat_or_usdt_2dp(amt)} EUR\n"
+        f"📅 <b>Fecha:</b> {d_fmt}"
+        f"{usd_line}"
+        f"{desc_line}"
+    )
 
 
 async def _pf_show_assets_pick(callback: CallbackQuery, state: FSMContext, user: User) -> None:
@@ -343,7 +406,7 @@ async def pf_wallet_detail(callback: CallbackQuery, state: FSMContext, user: Use
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="↩️ Volver al resumen", callback_data=f"pw:c:{wid_raw}")],
         [InlineKeyboardButton(text="🔄 Otra billetera", callback_data="pf:pw_back")],
-        [InlineKeyboardButton(text="Atras (Portfolio)", callback_data="pf:menu")],
+        [InlineKeyboardButton(text="↩️ Atras (Portfolio)", callback_data="pf:menu")],
     ])
     await callback.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
     await callback.answer()
@@ -402,9 +465,12 @@ async def pf_mov_back_ficha_cb(callback: CallbackQuery, state: FSMContext, user:
 
 
 @router.callback_query(PortfolioFlow.mov_bank, F.data.startswith("pb:"))
-async def pf_mov_pick_bank(callback: CallbackQuery, state: FSMContext) -> None:
+async def pf_mov_pick_bank(callback: CallbackQuery, state: FSMContext, user: User) -> None:
     aid = callback.data.split(":", 1)[1]
-    await state.update_data(mov_bank_account_id=aid)
+    accounts = await list_bank_accounts(user.id)
+    acc = next((a for a in accounts if str(a.get("id")) == aid), None)
+    bank_name = (acc.get("name") if acc else None) or "Cuenta"
+    await state.update_data(mov_bank_account_id=aid, mov_bank_name=bank_name)
     await callback.message.edit_text(
         "Tipo de <b>movimiento</b> en EUR:",
         reply_markup=portfolio_mov_dir_kb(),
@@ -437,8 +503,8 @@ async def pf_mov_dep(callback: CallbackQuery, state: FSMContext) -> None:
         "<b>Aporte</b>: importe en EUR que entra a la billetera.\nEj: 500.00",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[
             [
-                InlineKeyboardButton(text="Atras", callback_data="pf:mov_back_dir"),
-                InlineKeyboardButton(text="Cancelar", callback_data="pf:cancel"),
+                InlineKeyboardButton(text="↩️ Atras", callback_data="pf:mov_back_dir"),
+                InlineKeyboardButton(text="❌ Cancelar", callback_data="pf:cancel"),
             ],
         ]),
         parse_mode="HTML",
@@ -454,8 +520,8 @@ async def pf_mov_wd(callback: CallbackQuery, state: FSMContext) -> None:
         "<b>Retirada</b>: importe en EUR que sale de la billetera.\nEj: 200.00",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[
             [
-                InlineKeyboardButton(text="Atras", callback_data="pf:mov_back_dir"),
-                InlineKeyboardButton(text="Cancelar", callback_data="pf:cancel"),
+                InlineKeyboardButton(text="↩️ Atras", callback_data="pf:mov_back_dir"),
+                InlineKeyboardButton(text="❌ Cancelar", callback_data="pf:cancel"),
             ],
         ]),
         parse_mode="HTML",
@@ -538,8 +604,8 @@ async def pf_mov_month_back(callback: CallbackQuery, state: FSMContext) -> None:
         f"<b>{label}</b>: importe en EUR que {hint} de la billetera.\nEj: 500.00",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[
             [
-                InlineKeyboardButton(text="Atras", callback_data="pf:mov_back_dir"),
-                InlineKeyboardButton(text="Cancelar", callback_data="pf:cancel"),
+                InlineKeyboardButton(text="↩️ Atras", callback_data="pf:mov_back_dir"),
+                InlineKeyboardButton(text="❌ Cancelar", callback_data="pf:cancel"),
             ],
         ]),
         parse_mode="HTML",
@@ -613,7 +679,11 @@ async def pf_mov_desc_cancel(callback: CallbackQuery, state: FSMContext) -> None
 
 
 def _pf_mov_confirm_text(data: dict) -> str:
-    amt = data.get("mov_amount_eur", "?")
+    raw_amt = data.get("mov_amount_eur", "?")
+    try:
+        amt = fmt_fiat_or_usdt_2dp(Decimal(str(raw_amt)))
+    except Exception:
+        amt = str(raw_amt)
     raw_d = data.get("mov_date", "?")
     try:
         d_fmt = fmt_date_ddmmyyyy(str(raw_d))
@@ -669,7 +739,7 @@ async def pf_mov_confirm_ok(callback: CallbackQuery, state: FSMContext, user: Us
 
     if result:
         await callback.message.edit_text(
-            "✅ <b>Movimiento registrado</b>",
+            _mov_success_message(result, data),
             reply_markup=portfolio_menu_kb(),
             parse_mode="HTML",
         )
@@ -766,9 +836,22 @@ async def pf_op_back_to_ficha(callback: CallbackQuery, state: FSMContext, user: 
 
 
 @router.callback_query(PortfolioFlow.op_asset, F.data.startswith("pa:"))
-async def pf_pick_asset(callback: CallbackQuery, state: FSMContext) -> None:
+async def pf_pick_asset(callback: CallbackQuery, state: FSMContext, user: User) -> None:
     aid = callback.data.split(":", 1)[1]
-    await state.update_data(asset_id=aid)
+    data = await state.get_data()
+    sym, aname = "?", ""
+    wid_raw = data.get("wallet_id")
+    if wid_raw:
+        try:
+            wuuid = UUID(str(wid_raw))
+            assets = await list_wallet_assets(user.id, wuuid)
+            row = next((a for a in assets if str(a.get("id")) == aid), None)
+            if row:
+                sym = str(row.get("symbol") or "?").upper()
+                aname = str(row.get("name") or "")
+        except (ValueError, TypeError):
+            pass
+    await state.update_data(asset_id=aid, asset_symbol=sym, asset_name=aname)
     await callback.message.edit_text(
         "Cantidad (unidades del activo):\nEj: 0.0015 o 10",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[
@@ -824,7 +907,7 @@ async def pf_op_price_msg(message: Message, state: FSMContext) -> None:
     await state.update_data(op_price_per_unit=str(p), op_total_suggested=str(suggested))
     await message.answer(
         f"Importe <b>total</b> de la operacion (USDT u otra moneda de la billetera).\n"
-        f"Sugerido: <b>{_fmt_num(suggested)}</b>\n\n"
+        f"Sugerido: <b>{fmt_fiat_or_usdt_2dp(suggested)}</b> USDT\n\n"
         "Envia el importe final o el sugerido.",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[
             [
@@ -917,7 +1000,7 @@ async def pf_op_fees_back(callback: CallbackQuery, state: FSMContext) -> None:
     data = await state.get_data()
     suggested = data.get("op_total_suggested", "?")
     await callback.message.edit_text(
-        f"Importe total (sugerido {_fmt_num(suggested)}):\nEnvia el importe final.",
+        f"Importe total (sugerido {fmt_fiat_or_usdt_2dp(suggested)} USDT):\nEnvia el importe final.",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[
             [
                 InlineKeyboardButton(text="↩️ Atras", callback_data="pf:op_back_price"),
@@ -1054,14 +1137,17 @@ async def pf_op_notes_cancel(callback: CallbackQuery, state: FSMContext) -> None
 def _pf_op_confirm_text(data: dict) -> str:
     notes = data.get("op_notes") or "-"
     op_type = data.get("op_api_type", "buy")
+    sym = (data.get("asset_symbol") or "?").upper()
+    aname = (data.get("asset_name") or "").strip()
+    act = sym + (f" — {aname}" if aname else "")
     return (
         f"📌 <b>Confirmar operacion</b>\n\n"
-        f"<b>Tipo:</b> {_op_kind_label(op_type)} (<code>{op_type}</code>)\n"
-        f"<b>Activo ID:</b> <code>{data.get('asset_id', '?')}</code>\n"
-        f"<b>Cantidad:</b> {data.get('op_quantity', '?')}\n"
-        f"<b>Precio/u:</b> {data.get('op_price_per_unit', '?')}\n"
-        f"<b>Total:</b> {data.get('op_total_amount', '?')}\n"
-        f"<b>Comisiones:</b> {data.get('op_fees', '0')}\n"
+        f"<b>Tipo:</b> {_op_kind_label(str(op_type))} (<code>{op_type}</code>)\n"
+        f"<b>Activo:</b> {act}\n"
+        f"<b>Cantidad:</b> {fmt_crypto_qty(data.get('op_quantity'))}\n"
+        f"<b>Precio/u (USDT):</b> {fmt_fiat_or_usdt_2dp(data.get('op_price_per_unit'))}\n"
+        f"<b>Total (USDT):</b> {fmt_fiat_or_usdt_2dp(data.get('op_total_amount'))}\n"
+        f"<b>Comisiones:</b> {fmt_fiat_or_usdt_2dp(data.get('op_fees', 0))}\n"
         f"<b>Fecha:</b> {fmt_date_ddmmyyyy(data['op_date'])}\n"
         f"<b>Notas:</b> {notes}\n\n"
         "¿Confirmar?"
@@ -1112,7 +1198,7 @@ async def pf_op_confirm_ok(callback: CallbackQuery, state: FSMContext, user: Use
 
     if result:
         await callback.message.edit_text(
-            "✅ <b>Operacion registrada</b>",
+            _tx_success_message(result, data),
             reply_markup=portfolio_menu_kb(),
             parse_mode="HTML",
         )
