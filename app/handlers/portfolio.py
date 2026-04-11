@@ -6,6 +6,7 @@ from decimal import Decimal
 from uuid import UUID
 
 from aiogram import F, Router
+from aiogram.filters import StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
 
@@ -48,10 +49,7 @@ _MAX_MSG = 3900
 
 def _portfolio_done_kb() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
-        [
-            InlineKeyboardButton(text="🔄 Billeteras", callback_data="pf:pw_list"),
-            InlineKeyboardButton(text="↩️ Menu", callback_data="main_menu"),
-        ],
+        [InlineKeyboardButton(text="↩️ Atrás", callback_data="pf:pw_list")],
     ])
 
 
@@ -232,7 +230,7 @@ async def _show_portfolio_wallet_grid(message: Message, state: FSMContext, user:
         await message.edit_text(
             "No tienes billeteras de inversion. Crealas en Expensivo.",
             reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-                [InlineKeyboardButton(text="↩️ Menu principal", callback_data="main_menu")],
+                [InlineKeyboardButton(text="↩️ Atrás", callback_data="main_menu")],
             ]),
         )
         await state.clear()
@@ -309,13 +307,17 @@ async def pf_cancel(callback: CallbackQuery, state: FSMContext, user: User) -> N
     await callback.answer()
 
 
-@router.callback_query(PortfolioFlow.wallet_hub, F.data == "pf:hub_tx")
+@router.callback_query(
+    F.data == "pf:hub_tx",
+    StateFilter(PortfolioFlow.wallet_hub, PortfolioFlow.op_asset),
+)
 async def pf_hub_tx(callback: CallbackQuery, state: FSMContext) -> None:
     await callback.message.edit_text(
         "<b>Transaccion</b>: compra o venta de un activo.\n\nElige el tipo:",
         reply_markup=portfolio_tx_inline_kb(),
         parse_mode="HTML",
     )
+    await state.set_state(PortfolioFlow.wallet_hub)
     await callback.answer()
 
 
@@ -400,9 +402,7 @@ async def pf_wallet_detail(callback: CallbackQuery, state: FSMContext, user: Use
 
     text = _details_full_text(det)
     kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="↩️ Volver al resumen", callback_data="pf:hub_resume")],
-        [InlineKeyboardButton(text="🔄 Billeteras", callback_data="pf:pw_list")],
-        [InlineKeyboardButton(text="↩️ Menu principal", callback_data="main_menu")],
+        [InlineKeyboardButton(text="↩️ Atrás", callback_data="pf:hub_resume")],
     ])
     await callback.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
     await callback.answer()

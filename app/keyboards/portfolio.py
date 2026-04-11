@@ -26,7 +26,7 @@ def portfolio_wallets_grid_kb(wallets: list[dict]) -> InlineKeyboardMarkup:
             pair = []
     if pair:
         rows.append(pair)
-    rows.append([InlineKeyboardButton(text="↩️ Menu principal", callback_data="main_menu")])
+    rows.append([InlineKeyboardButton(text="↩️ Atrás", callback_data="main_menu")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
@@ -41,10 +41,7 @@ def portfolio_wallet_hub_kb(wallet_id: UUID) -> InlineKeyboardMarkup:
         [
             InlineKeyboardButton(text="💶 Movimiento", callback_data="pf:hub:mov"),
         ],
-        [
-            InlineKeyboardButton(text="🔄 Billeteras", callback_data="pf:pw_list"),
-            InlineKeyboardButton(text="↩️ Menu", callback_data="main_menu"),
-        ],
+        [InlineKeyboardButton(text="↩️ Atrás", callback_data="pf:pw_list")],
     ])
 
 
@@ -55,7 +52,7 @@ def portfolio_tx_inline_kb() -> InlineKeyboardMarkup:
             InlineKeyboardButton(text="📈 Compra", callback_data="pf:hub:buy"),
             InlineKeyboardButton(text="📉 Venta", callback_data="pf:hub:sell"),
         ],
-        [InlineKeyboardButton(text="↩️ Volver", callback_data="pf:hub_resume")],
+        [InlineKeyboardButton(text="↩️ Atrás", callback_data="pf:hub_resume")],
     ])
 
 
@@ -68,7 +65,7 @@ def portfolio_bank_accounts_kb(accounts: list[dict]) -> InlineKeyboardMarkup:
             InlineKeyboardButton(text=f"🏦 {label}", callback_data=f"pb:{aid}"),
         ])
     rows.append([
-        InlineKeyboardButton(text="↩️ Atras", callback_data="pf:hub_resume"),
+        InlineKeyboardButton(text="↩️ Atrás", callback_data="pf:hub_resume"),
         InlineKeyboardButton(text="❌ Cancelar", callback_data="pf:cancel"),
     ])
     return InlineKeyboardMarkup(inline_keyboard=rows)
@@ -81,7 +78,7 @@ def portfolio_mov_dir_kb() -> InlineKeyboardMarkup:
             InlineKeyboardButton(text="➖ Retirada EUR", callback_data="pf:mov_wd"),
         ],
         [
-            InlineKeyboardButton(text="↩️ Atras", callback_data="pf:mov_back_bank"),
+            InlineKeyboardButton(text="↩️ Atrás", callback_data="pf:mov_back_bank"),
             InlineKeyboardButton(text="❌ Cancelar", callback_data="pf:cancel"),
         ],
     ])
@@ -101,7 +98,7 @@ def portfolio_assets_kb(assets: list[dict]) -> InlineKeyboardMarkup:
             InlineKeyboardButton(text=f"📊 {label[:58]}", callback_data=f"pa:{aid}"),
         ])
     rows.append([
-        InlineKeyboardButton(text="↩️ Atras", callback_data="pf:hub_resume"),
+        InlineKeyboardButton(text="↩️ Atrás", callback_data="pf:hub_tx"),
         InlineKeyboardButton(text="❌ Cancelar", callback_data="pf:cancel"),
     ])
     return InlineKeyboardMarkup(inline_keyboard=rows)
