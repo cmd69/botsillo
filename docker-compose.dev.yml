@@ -7,7 +7,7 @@ services:
     env_file: .env
     environment:
       - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
-      - DATABASE_URL=postgresql+asyncpg://${DB_USER:-expense_user}:${DB_PASSWORD:-expense_password}@${DB_HOST:-expense_postgres_dev}:5432/${DB_NAME:-expense_db}
+      - DATABASE_URL=postgresql+asyncpg://${DB_USER:-expense_user}:${DB_PASSWORD:-expense_password}@${DB_HOST:-postgres}:5432/${DB_NAME:-expense_db}
       - API_BASE_URL=${API_BASE_URL:-http://expense_backend_dev:8000}
       - SECRET_KEY=${SECRET_KEY}
     volumes:
