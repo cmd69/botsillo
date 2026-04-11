@@ -343,7 +343,7 @@ async def pf_wallet_detail(callback: CallbackQuery, state: FSMContext, user: Use
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="↩️ Volver al resumen", callback_data=f"pw:c:{wid_raw}")],
         [InlineKeyboardButton(text="🔄 Otra billetera", callback_data="pf:pw_back")],
-        [InlineKeyboardButton(text="Atrás (Portfolio)", callback_data="pf:menu")],
+        [InlineKeyboardButton(text="Atras (Portfolio)", callback_data="pf:menu")],
     ])
     await callback.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
     await callback.answer()
@@ -437,7 +437,7 @@ async def pf_mov_dep(callback: CallbackQuery, state: FSMContext) -> None:
         "<b>Aporte</b>: importe en EUR que entra a la billetera.\nEj: 500.00",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[
             [
-                InlineKeyboardButton(text="Atrás", callback_data="pf:mov_back_dir"),
+                InlineKeyboardButton(text="Atras", callback_data="pf:mov_back_dir"),
                 InlineKeyboardButton(text="Cancelar", callback_data="pf:cancel"),
             ],
         ]),
@@ -454,7 +454,7 @@ async def pf_mov_wd(callback: CallbackQuery, state: FSMContext) -> None:
         "<b>Retirada</b>: importe en EUR que sale de la billetera.\nEj: 200.00",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[
             [
-                InlineKeyboardButton(text="Atrás", callback_data="pf:mov_back_dir"),
+                InlineKeyboardButton(text="Atras", callback_data="pf:mov_back_dir"),
                 InlineKeyboardButton(text="Cancelar", callback_data="pf:cancel"),
             ],
         ]),
@@ -538,7 +538,7 @@ async def pf_mov_month_back(callback: CallbackQuery, state: FSMContext) -> None:
         f"<b>{label}</b>: importe en EUR que {hint} de la billetera.\nEj: 500.00",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[
             [
-                InlineKeyboardButton(text="Atrás", callback_data="pf:mov_back_dir"),
+                InlineKeyboardButton(text="Atras", callback_data="pf:mov_back_dir"),
                 InlineKeyboardButton(text="Cancelar", callback_data="pf:cancel"),
             ],
         ]),
