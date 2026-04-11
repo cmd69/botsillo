@@ -37,7 +37,7 @@ async def cb_root_expenses(callback: CallbackQuery, state: FSMContext) -> None:
 async def cb_root_portfolio(callback: CallbackQuery, state: FSMContext) -> None:
     await state.clear()
     await callback.message.edit_text(
-        "Seccion <b>Portfolio</b>: consulta billeteras de inversion o registra operaciones.",
+        "<b>Portfolio</b>: consultar, transacciones de activos o movimientos de capital.",
         reply_markup=portfolio_menu_kb(),
         parse_mode="HTML",
     )

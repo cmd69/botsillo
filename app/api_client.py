@@ -238,3 +238,56 @@ async def create_asset_operation(
         msg = getattr(e, "response", None) and e.response.text or str(e)
         log.error("Error creando operacion activo: %s", e)
         return None, msg
+
+
+async def list_bank_accounts(user_id: UUID) -> list[dict]:
+    try:
+        resp = await _get_client().get(
+            "/api/v1/accounts",
+            headers=_headers(user_id),
+        )
+        resp.raise_for_status()
+        return resp.json()
+    except httpx.HTTPError as e:
+        log.error(
+            "Error listando cuentas bancarias: %s — %s",
+            e,
+            getattr(e, "response", None) and e.response.text,
+        )
+        return []
+
+
+async def create_capital_contribution(
+    user_id: UUID,
+    bank_account_id: UUID,
+    wallet_id: UUID,
+    amount: Decimal,
+    contrib_date: date,
+    description: str | None = None,
+) -> tuple[dict | None, str | None]:
+    """POST /investments/contributions. amount positivo = aporte, negativo = retirada."""
+    payload: dict[str, Any] = {
+        "bank_account_id": str(bank_account_id),
+        "destination_type": "investment_wallet",
+        "destination_id": str(wallet_id),
+        "amount": _decimal_json(amount),
+        "date": contrib_date.isoformat(),
+    }
+    if description:
+        payload["description"] = description
+
+    try:
+        resp = await _get_client().post(
+            "/api/v1/investments/contributions",
+            json=payload,
+            headers=_headers(user_id),
+        )
+        if resp.status_code >= 400:
+            err = _http_error_detail(resp)
+            log.error("Error creando aporte: %s — %s", resp.status_code, err)
+            return None, err
+        return resp.json(), None
+    except httpx.HTTPError as e:
+        msg = getattr(e, "response", None) and e.response.text or str(e)
+        log.error("Error creando aporte: %s", e)
+        return None, msg

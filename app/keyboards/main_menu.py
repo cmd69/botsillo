@@ -28,8 +28,23 @@ def expenses_menu_kb() -> InlineKeyboardMarkup:
 
 def portfolio_menu_kb() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🔍 Consultar", callback_data="pf:consult")],
-        [InlineKeyboardButton(text="💸 Nuevo gasto", callback_data="pf:expense")],
-        [InlineKeyboardButton(text="💰 Nuevo ingreso", callback_data="pf:income")],
-        [InlineKeyboardButton(text="↩️ Volver", callback_data="main_menu")],
+        [
+            InlineKeyboardButton(text="Consultar", callback_data="pf:consult"),
+            InlineKeyboardButton(text="Transaccion", callback_data="pf:tx_menu"),
+        ],
+        [
+            InlineKeyboardButton(text="Movimiento", callback_data="pf:movement"),
+            InlineKeyboardButton(text="Atras", callback_data="main_menu"),
+        ],
+    ])
+
+
+def portfolio_tx_submenu_kb() -> InlineKeyboardMarkup:
+    """Compra/Venta de activos (tras pulsar Transacción)."""
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="Compra", callback_data="pf:expense"),
+            InlineKeyboardButton(text="Venta", callback_data="pf:income"),
+        ],
+        [InlineKeyboardButton(text="Atras", callback_data="pf:menu")],
     ])

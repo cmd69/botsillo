@@ -11,8 +11,10 @@ from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMar
 
 from app.api_client import (
     create_asset_operation,
+    create_capital_contribution,
     get_wallet_details,
     get_wallet_summary,
+    list_bank_accounts,
     list_investment_wallets,
     list_wallet_assets,
 )
@@ -24,10 +26,13 @@ from app.formatting import (
 )
 from app.keyboards.common import confirm_cancel_kb, empty_cancel_kb
 from app.keyboards.date_picker import day_step_kb, month_step_kb
-from app.keyboards.main_menu import portfolio_menu_kb
+from app.keyboards.main_menu import portfolio_menu_kb, portfolio_tx_submenu_kb
 from app.keyboards.portfolio import (
     portfolio_assets_kb,
+    portfolio_bank_accounts_kb,
     portfolio_consult_ficha_kb,
+    portfolio_move_ficha_kb,
+    portfolio_mov_dir_kb,
     portfolio_op_ficha_kb,
     portfolio_wallets_kb,
 )
@@ -36,6 +41,7 @@ from app.states import PortfolioFlow
 router = Router(name="portfolio")
 
 PF_DATE_PREFIX = "pfm"
+PFC_DATE_PREFIX = "pfc"
 
 _MAX_MSG = 3900
 
@@ -152,7 +158,7 @@ async def _pf_show_assets_pick(callback: CallbackQuery, state: FSMContext, user:
 async def _show_wallet_list(message: Message, state: FSMContext, user: User) -> None:
     data = await state.get_data()
     mode = data.get("pf_mode")
-    if mode not in ("consult", "expense", "income"):
+    if mode not in ("consult", "expense", "income", "movement"):
         await state.clear()
         await message.edit_text("Sesion caducada.", reply_markup=portfolio_menu_kb())
         return
@@ -168,8 +174,9 @@ async def _show_wallet_list(message: Message, state: FSMContext, user: User) -> 
 
     title = {
         "consult": "Elige la billetera a <b>consultar</b>:",
-        "expense": "Elige la billetera para <b>nuevo gasto</b> (compra):",
-        "income": "Elige la billetera para <b>nuevo ingreso</b> (venta):",
+        "expense": "Elige la billetera para <b>compra</b> (transaccion):",
+        "income": "Elige la billetera para <b>venta</b> (transaccion):",
+        "movement": "Elige la billetera para el <b>movimiento</b> de capital (EUR):",
     }[mode]
     await message.edit_text(
         title,
@@ -180,6 +187,17 @@ async def _show_wallet_list(message: Message, state: FSMContext, user: User) -> 
 
 
 # --- Entrada menu Portfolio ---
+
+
+@router.callback_query(F.data == "pf:tx_menu")
+async def pf_tx_menu(callback: CallbackQuery, state: FSMContext) -> None:
+    await state.clear()
+    await callback.message.edit_text(
+        "<b>Transacción</b>: operacion de compra o venta sobre un activo de la billetera.",
+        reply_markup=portfolio_tx_submenu_kb(),
+        parse_mode="HTML",
+    )
+    await callback.answer()
 
 
 @router.callback_query(F.data == "pf:consult")
@@ -206,11 +224,19 @@ async def pf_start_income(callback: CallbackQuery, state: FSMContext, user: User
     await callback.answer()
 
 
+@router.callback_query(F.data == "pf:movement")
+async def pf_start_movement(callback: CallbackQuery, state: FSMContext, user: User) -> None:
+    await state.clear()
+    await state.update_data(pf_mode="movement", user_id=str(user.id))
+    await _show_wallet_list(callback.message, state, user)
+    await callback.answer()
+
+
 @router.callback_query(F.data == "pf:menu")
 async def pf_back_menu(callback: CallbackQuery, state: FSMContext) -> None:
     await state.clear()
     await callback.message.edit_text(
-        "Seccion <b>Portfolio</b>: consulta billeteras de inversion o registra operaciones.",
+        "<b>Portfolio</b>: consultar, transacciones de activos o movimientos de capital.",
         reply_markup=portfolio_menu_kb(),
         parse_mode="HTML",
     )
@@ -244,7 +270,7 @@ async def pf_pick_wallet(callback: CallbackQuery, state: FSMContext, user: User)
         await callback.answer()
         return
     letter, wid_raw = parts[1], parts[2]
-    expected = {"c": "consult", "e": "expense", "i": "income"}.get(letter)
+    expected = {"c": "consult", "e": "expense", "i": "income", "m": "movement"}.get(letter)
     data = await state.get_data()
     if expected != data.get("pf_mode"):
         await callback.answer("Accion no valida. Vuelve a Portfolio.", show_alert=True)
@@ -273,6 +299,13 @@ async def pf_pick_wallet(callback: CallbackQuery, state: FSMContext, user: User)
             parse_mode="HTML",
         )
         await state.set_state(PortfolioFlow.consult_after_ficha)
+    elif data["pf_mode"] == "movement":
+        await callback.message.edit_text(
+            text + "\n\n<b>Movimiento de capital</b> (EUR desde cuenta bancaria)",
+            reply_markup=portfolio_move_ficha_kb(),
+            parse_mode="HTML",
+        )
+        await state.set_state(PortfolioFlow.mov_after_ficha)
     else:
         await callback.message.edit_text(
             text + f"\n\n{_op_kind_label(data.get('op_api_type', 'buy'))}",
@@ -310,10 +343,351 @@ async def pf_wallet_detail(callback: CallbackQuery, state: FSMContext, user: Use
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="↩️ Volver al resumen", callback_data=f"pw:c:{wid_raw}")],
         [InlineKeyboardButton(text="🔄 Otra billetera", callback_data="pf:pw_back")],
-        [InlineKeyboardButton(text="↩️ Menu Portfolio", callback_data="pf:menu")],
+        [InlineKeyboardButton(text="Atrás (Portfolio)", callback_data="pf:menu")],
     ])
     await callback.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
     await callback.answer()
+
+
+# --- Movimiento de capital (EUR) ---
+
+
+async def _pf_reload_move_ficha(callback: CallbackQuery, state: FSMContext, user: User) -> None:
+    data = await state.get_data()
+    wid_raw = data.get("wallet_id")
+    if not wid_raw:
+        await pf_cancel(callback, state)
+        return
+    try:
+        wuuid = UUID(str(wid_raw))
+    except ValueError:
+        await pf_cancel(callback, state)
+        return
+    summary = await get_wallet_summary(user.id, wuuid)
+    if not summary:
+        await pf_cancel(callback, state)
+        return
+    name = summary.get("wallet_name") or "Billetera"
+    text = _summary_ficha_text(name, summary) + "\n\n<b>Movimiento de capital</b> (EUR desde cuenta bancaria)"
+    await callback.message.edit_text(
+        text,
+        reply_markup=portfolio_move_ficha_kb(),
+        parse_mode="HTML",
+    )
+    await state.set_state(PortfolioFlow.mov_after_ficha)
+
+
+@router.callback_query(PortfolioFlow.mov_after_ficha, F.data == "pf:mov_go")
+async def pf_mov_go(callback: CallbackQuery, state: FSMContext, user: User) -> None:
+    accounts = await list_bank_accounts(user.id)
+    if not accounts:
+        await callback.answer(
+            "No hay cuentas bancarias. Crealas en Expensivo.",
+            show_alert=True,
+        )
+        return
+    await callback.message.edit_text(
+        "Selecciona la <b>cuenta bancaria</b> de origen:",
+        reply_markup=portfolio_bank_accounts_kb(accounts),
+        parse_mode="HTML",
+    )
+    await state.set_state(PortfolioFlow.mov_bank)
+    await callback.answer()
+
+
+@router.callback_query(PortfolioFlow.mov_bank, F.data == "pf:mov_back_ficha")
+async def pf_mov_back_ficha_cb(callback: CallbackQuery, state: FSMContext, user: User) -> None:
+    await _pf_reload_move_ficha(callback, state, user)
+    await callback.answer()
+
+
+@router.callback_query(PortfolioFlow.mov_bank, F.data.startswith("pb:"))
+async def pf_mov_pick_bank(callback: CallbackQuery, state: FSMContext) -> None:
+    aid = callback.data.split(":", 1)[1]
+    await state.update_data(mov_bank_account_id=aid)
+    await callback.message.edit_text(
+        "Tipo de <b>movimiento</b> en EUR:",
+        reply_markup=portfolio_mov_dir_kb(),
+        parse_mode="HTML",
+    )
+    await state.set_state(PortfolioFlow.mov_pick_dir)
+    await callback.answer()
+
+
+@router.callback_query(PortfolioFlow.mov_pick_dir, F.data == "pf:mov_back_bank")
+async def pf_mov_back_bank_cb(callback: CallbackQuery, state: FSMContext, user: User) -> None:
+    accounts = await list_bank_accounts(user.id)
+    if not accounts:
+        await _pf_reload_move_ficha(callback, state, user)
+        await callback.answer()
+        return
+    await callback.message.edit_text(
+        "Selecciona la <b>cuenta bancaria</b> de origen:",
+        reply_markup=portfolio_bank_accounts_kb(accounts),
+        parse_mode="HTML",
+    )
+    await state.set_state(PortfolioFlow.mov_bank)
+    await callback.answer()
+
+
+@router.callback_query(PortfolioFlow.mov_pick_dir, F.data == "pf:mov_dep")
+async def pf_mov_dep(callback: CallbackQuery, state: FSMContext) -> None:
+    await state.update_data(mov_sign=1)
+    await callback.message.edit_text(
+        "<b>Aporte</b>: importe en EUR que entra a la billetera.\nEj: 500.00",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [
+                InlineKeyboardButton(text="Atrás", callback_data="pf:mov_back_dir"),
+                InlineKeyboardButton(text="Cancelar", callback_data="pf:cancel"),
+            ],
+        ]),
+        parse_mode="HTML",
+    )
+    await state.set_state(PortfolioFlow.mov_amount)
+    await callback.answer()
+
+
+@router.callback_query(PortfolioFlow.mov_pick_dir, F.data == "pf:mov_wd")
+async def pf_mov_wd(callback: CallbackQuery, state: FSMContext) -> None:
+    await state.update_data(mov_sign=-1)
+    await callback.message.edit_text(
+        "<b>Retirada</b>: importe en EUR que sale de la billetera.\nEj: 200.00",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [
+                InlineKeyboardButton(text="Atrás", callback_data="pf:mov_back_dir"),
+                InlineKeyboardButton(text="Cancelar", callback_data="pf:cancel"),
+            ],
+        ]),
+        parse_mode="HTML",
+    )
+    await state.set_state(PortfolioFlow.mov_amount)
+    await callback.answer()
+
+
+@router.callback_query(PortfolioFlow.mov_amount, F.data == "pf:mov_back_dir")
+async def pf_mov_back_dir_cb(callback: CallbackQuery, state: FSMContext) -> None:
+    await callback.message.edit_text(
+        "Tipo de <b>movimiento</b> en EUR:",
+        reply_markup=portfolio_mov_dir_kb(),
+        parse_mode="HTML",
+    )
+    await state.set_state(PortfolioFlow.mov_pick_dir)
+    await callback.answer()
+
+
+@router.message(PortfolioFlow.mov_amount)
+async def pf_mov_amount_msg(message: Message, state: FSMContext) -> None:
+    raw = parse_positive_decimal(message.text or "")
+    if raw is None:
+        await message.answer("Formato invalido. Ej: 100 o 50.50")
+        return
+    data = await state.get_data()
+    sign = int(data.get("mov_sign", 1))
+    amt = raw * sign
+    await state.update_data(mov_amount_eur=str(amt))
+    await message.answer(
+        "Fecha del movimiento — elige el mes:",
+        reply_markup=month_step_kb(PFC_DATE_PREFIX),
+    )
+    await state.set_state(PortfolioFlow.mov_month)
+
+
+@router.callback_query(PortfolioFlow.mov_month, F.data.startswith(f"{PFC_DATE_PREFIX}:m:"))
+async def pf_mov_sel_month(callback: CallbackQuery, state: FSMContext) -> None:
+    ym = callback.data.split(":", 2)[2]
+    year, month = int(ym.split("-")[0]), int(ym.split("-")[1])
+    await state.update_data(cal_year=year, cal_month=month)
+    await callback.message.edit_text(
+        "Selecciona el dia:",
+        reply_markup=day_step_kb(PFC_DATE_PREFIX, year, month),
+    )
+    await state.set_state(PortfolioFlow.mov_day)
+    await callback.answer()
+
+
+@router.callback_query(PortfolioFlow.mov_month, F.data.startswith(f"{PFC_DATE_PREFIX}:y:"))
+async def pf_mov_year(callback: CallbackQuery) -> None:
+    year = int(callback.data.split(":", 2)[2])
+    await callback.message.edit_reply_markup(reply_markup=month_step_kb(PFC_DATE_PREFIX, year))
+    await callback.answer()
+
+
+@router.callback_query(PortfolioFlow.mov_month, F.data.startswith(f"{PFC_DATE_PREFIX}:d:"))
+async def pf_mov_quick_date(callback: CallbackQuery, state: FSMContext) -> None:
+    iso_date = callback.data.split(":", 2)[2]
+    await state.update_data(mov_date=iso_date)
+    await callback.message.edit_text(
+        "Descripcion (opcional). Enviala o pulsa Vacio.",
+        reply_markup=empty_cancel_kb(),
+    )
+    await state.set_state(PortfolioFlow.mov_desc)
+    await callback.answer()
+
+
+@router.callback_query(PortfolioFlow.mov_month, F.data == "cancel")
+async def pf_mov_month_cancel(callback: CallbackQuery, state: FSMContext) -> None:
+    await pf_cancel(callback, state)
+
+
+@router.callback_query(PortfolioFlow.mov_month, F.data == "back")
+async def pf_mov_month_back(callback: CallbackQuery, state: FSMContext) -> None:
+    data = await state.get_data()
+    sign = int(data.get("mov_sign", 1))
+    label, hint = ("Aporte", "entra") if sign > 0 else ("Retirada", "sale")
+    await callback.message.edit_text(
+        f"<b>{label}</b>: importe en EUR que {hint} de la billetera.\nEj: 500.00",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [
+                InlineKeyboardButton(text="Atrás", callback_data="pf:mov_back_dir"),
+                InlineKeyboardButton(text="Cancelar", callback_data="pf:cancel"),
+            ],
+        ]),
+        parse_mode="HTML",
+    )
+    await state.set_state(PortfolioFlow.mov_amount)
+    await callback.answer()
+
+
+@router.callback_query(PortfolioFlow.mov_day, F.data.startswith(f"{PFC_DATE_PREFIX}:d:"))
+async def pf_mov_sel_day(callback: CallbackQuery, state: FSMContext) -> None:
+    iso_date = callback.data.split(":", 2)[2]
+    await state.update_data(mov_date=iso_date)
+    await callback.message.edit_text(
+        "Descripcion (opcional). Enviala o pulsa Vacio.",
+        reply_markup=empty_cancel_kb(),
+    )
+    await state.set_state(PortfolioFlow.mov_desc)
+    await callback.answer()
+
+
+@router.callback_query(PortfolioFlow.mov_day, F.data == "back")
+async def pf_mov_day_back(callback: CallbackQuery, state: FSMContext) -> None:
+    data = await state.get_data()
+    year = data.get("cal_year", date.today().year)
+    month = data.get("cal_month", date.today().month)
+    await callback.message.edit_text(
+        "Fecha — elige el mes:",
+        reply_markup=month_step_kb(PFC_DATE_PREFIX, year),
+    )
+    await state.set_state(PortfolioFlow.mov_month)
+    await callback.answer()
+
+
+@router.callback_query(PortfolioFlow.mov_day, F.data == "cancel")
+async def pf_mov_day_cancel(callback: CallbackQuery, state: FSMContext) -> None:
+    await pf_cancel(callback, state)
+
+
+@router.message(PortfolioFlow.mov_desc)
+async def pf_mov_desc_msg(message: Message, state: FSMContext) -> None:
+    await state.update_data(mov_description=message.text.strip())
+    await _pf_show_mov_confirm(message, state)
+
+
+@router.callback_query(PortfolioFlow.mov_desc, F.data == "skip")
+async def pf_mov_desc_skip(callback: CallbackQuery, state: FSMContext) -> None:
+    await state.update_data(mov_description="")
+    data = await state.get_data()
+    await callback.message.edit_text(
+        _pf_mov_confirm_text(data),
+        reply_markup=confirm_cancel_kb(),
+        parse_mode="HTML",
+    )
+    await state.set_state(PortfolioFlow.mov_confirm)
+    await callback.answer()
+
+
+@router.callback_query(PortfolioFlow.mov_desc, F.data == "back")
+async def pf_mov_desc_back(callback: CallbackQuery, state: FSMContext) -> None:
+    await callback.message.edit_text(
+        "Fecha del movimiento — elige el mes:",
+        reply_markup=month_step_kb(PFC_DATE_PREFIX),
+    )
+    await state.set_state(PortfolioFlow.mov_month)
+    await callback.answer()
+
+
+@router.callback_query(PortfolioFlow.mov_desc, F.data == "cancel")
+async def pf_mov_desc_cancel(callback: CallbackQuery, state: FSMContext) -> None:
+    await pf_cancel(callback, state)
+
+
+def _pf_mov_confirm_text(data: dict) -> str:
+    amt = data.get("mov_amount_eur", "?")
+    raw_d = data.get("mov_date", "?")
+    try:
+        d_fmt = fmt_date_ddmmyyyy(str(raw_d))
+    except (ValueError, TypeError):
+        d_fmt = str(raw_d)
+    desc = data.get("mov_description") or "-"
+    label = "Aporte" if int(data.get("mov_sign", 1)) > 0 else "Retirada"
+    return (
+        f"📌 <b>Confirmar movimiento</b>\n\n"
+        f"<b>Tipo:</b> {label}\n"
+        f"<b>Importe:</b> {amt} EUR\n"
+        f"<b>Fecha:</b> {d_fmt}\n"
+        f"<b>Descripcion:</b> {desc}\n\n"
+        "¿Confirmar?"
+    )
+
+
+async def _pf_show_mov_confirm(message: Message, state: FSMContext) -> None:
+    data = await state.get_data()
+    await message.answer(
+        _pf_mov_confirm_text(data),
+        reply_markup=confirm_cancel_kb(),
+        parse_mode="HTML",
+    )
+    await state.set_state(PortfolioFlow.mov_confirm)
+
+
+@router.callback_query(PortfolioFlow.mov_confirm, F.data == "confirm")
+async def pf_mov_confirm_ok(callback: CallbackQuery, state: FSMContext, user: User) -> None:
+    data = await state.get_data()
+    try:
+        bank_id = UUID(str(data["mov_bank_account_id"]))
+        wallet_id = UUID(str(data["wallet_id"]))
+        amt = Decimal(str(data["mov_amount_eur"]))
+        mov_d = date.fromisoformat(str(data["mov_date"]))
+    except Exception:
+        await callback.message.edit_text("Error interno (datos).", reply_markup=portfolio_menu_kb())
+        await state.clear()
+        await callback.answer()
+        return
+
+    desc_raw = data.get("mov_description") or ""
+    desc = desc_raw if desc_raw else None
+
+    result, err = await create_capital_contribution(
+        user_id=user.id,
+        bank_account_id=bank_id,
+        wallet_id=wallet_id,
+        amount=amt,
+        contrib_date=mov_d,
+        description=desc,
+    )
+
+    if result:
+        await callback.message.edit_text(
+            "✅ <b>Movimiento registrado</b>",
+            reply_markup=portfolio_menu_kb(),
+            parse_mode="HTML",
+        )
+    else:
+        err_txt = err or "Error desconocido"
+        await callback.message.edit_text(
+            f"❌ <b>No se pudo registrar</b>\n\n{err_txt[:500]}",
+            reply_markup=portfolio_menu_kb(),
+            parse_mode="HTML",
+        )
+
+    await state.clear()
+    await callback.answer()
+
+
+@router.callback_query(PortfolioFlow.mov_confirm, F.data == "cancel")
+async def pf_mov_confirm_cancel(callback: CallbackQuery, state: FSMContext) -> None:
+    await pf_cancel(callback, state)
 
 
 # Volver al resumen desde detalle
