@@ -22,3 +22,20 @@ class IncomeFlow(StatesGroup):
 class QueryFlow(StatesGroup):
     month = State()
     detail = State()
+
+
+class PortfolioFlow(StatesGroup):
+    """Consulta u operacion (buy/sell) en billetera de inversion."""
+
+    picking_wallet = State()
+    consult_after_ficha = State()
+    op_after_ficha = State()
+    op_asset = State()
+    op_quantity = State()
+    op_price = State()
+    op_total = State()
+    op_fees = State()
+    op_month = State()
+    op_day = State()
+    op_notes = State()
+    op_confirm = State()

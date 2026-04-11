@@ -9,7 +9,7 @@ from app.category_utils import roots as root_categories
 from app.db import User
 from app.keyboards.categories import categories_kb
 from app.keyboards.date_picker import month_step_kb
-from app.keyboards.main_menu import main_menu_kb
+from app.keyboards.main_menu import expenses_menu_kb, main_menu_kb, portfolio_menu_kb
 from app.states import ExpenseFlow, IncomeFlow
 
 router = Router(name="menu")
@@ -19,6 +19,28 @@ router = Router(name="menu")
 async def cb_main_menu(callback: CallbackQuery, state: FSMContext, user: User) -> None:
     await state.clear()
     await callback.message.edit_text(texts.MENU_TITLE, reply_markup=main_menu_kb())
+    await callback.answer()
+
+
+@router.callback_query(F.data == "menu:root_expenses")
+async def cb_root_expenses(callback: CallbackQuery, state: FSMContext) -> None:
+    await state.clear()
+    await callback.message.edit_text(
+        "Seccion <b>Gastos</b>: registra movimientos o consulta tu actividad.",
+        reply_markup=expenses_menu_kb(),
+        parse_mode="HTML",
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data == "menu:root_portfolio")
+async def cb_root_portfolio(callback: CallbackQuery, state: FSMContext) -> None:
+    await state.clear()
+    await callback.message.edit_text(
+        "Seccion <b>Portfolio</b>: consulta billeteras de inversion o registra operaciones.",
+        reply_markup=portfolio_menu_kb(),
+        parse_mode="HTML",
+    )
     await callback.answer()
 
 

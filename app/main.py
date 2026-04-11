@@ -5,7 +5,7 @@ from aiogram import Bot, Dispatcher, Router
 from aiogram.types import BotCommand, ErrorEvent
 
 from app.config import settings
-from app.handlers import start, menu, expense, income, query
+from app.handlers import start, menu, portfolio, expense, income, query
 from app.middlewares.auth import AuthMiddleware
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -53,6 +53,7 @@ async def main() -> None:
     dp.include_router(error_router)
     dp.include_router(start.router)
     dp.include_router(menu.router)
+    dp.include_router(portfolio.router)
     dp.include_router(expense.router)
     dp.include_router(income.router)
     dp.include_router(query.router)

@@ -1,5 +1,7 @@
 import logging
 from datetime import date
+from decimal import Decimal
+from typing import Any
 from uuid import UUID
 
 import httpx
@@ -24,6 +26,31 @@ def _get_client() -> httpx.AsyncClient:
 
 def _headers(user_id: UUID) -> dict:
     return {"Authorization": f"Bearer {create_bot_token(user_id)}"}
+
+
+def _http_error_detail(response: httpx.Response) -> str:
+    try:
+        data = response.json()
+        if isinstance(data, dict) and "detail" in data:
+            detail = data["detail"]
+            if isinstance(detail, list):
+                parts = []
+                for item in detail:
+                    if isinstance(item, dict) and "msg" in item:
+                        parts.append(str(item["msg"]))
+                    else:
+                        parts.append(str(item))
+                return "; ".join(parts) if parts else response.text
+            return str(detail)
+    except Exception:
+        pass
+    return (response.text or response.reason_phrase or "Error HTTP").strip() or "Error HTTP"
+
+
+def _decimal_json(x: Decimal | float | int | str) -> str:
+    if isinstance(x, Decimal):
+        return format(x, "f")
+    return str(x)
 
 
 async def create_transaction(
@@ -102,3 +129,112 @@ async def get_transactions(
     except httpx.HTTPError as e:
         log.error("Error obteniendo transacciones: %s", e)
         return []
+
+
+async def list_investment_wallets(user_id: UUID) -> list[dict]:
+    try:
+        resp = await _get_client().get(
+            "/api/v1/investments/wallets",
+            headers=_headers(user_id),
+        )
+        resp.raise_for_status()
+        return resp.json()
+    except httpx.HTTPError as e:
+        log.error(
+            "Error listando billeteras: %s — %s",
+            e,
+            getattr(e, "response", None) and e.response.text,
+        )
+        return []
+
+
+async def get_wallet_summary(user_id: UUID, wallet_id: UUID) -> dict | None:
+    try:
+        resp = await _get_client().get(
+            f"/api/v1/investments/wallets/{wallet_id}/summary",
+            headers=_headers(user_id),
+        )
+        resp.raise_for_status()
+        return resp.json()
+    except httpx.HTTPError as e:
+        log.error(
+            "Error resumen billetera: %s — %s",
+            e,
+            getattr(e, "response", None) and e.response.text,
+        )
+        return None
+
+
+async def get_wallet_details(user_id: UUID, wallet_id: UUID) -> dict | None:
+    try:
+        resp = await _get_client().get(
+            f"/api/v1/investments/wallets/{wallet_id}/details",
+            headers=_headers(user_id),
+        )
+        resp.raise_for_status()
+        return resp.json()
+    except httpx.HTTPError as e:
+        log.error(
+            "Error detalle billetera: %s — %s",
+            e,
+            getattr(e, "response", None) and e.response.text,
+        )
+        return None
+
+
+async def list_wallet_assets(user_id: UUID, wallet_id: UUID) -> list[dict]:
+    try:
+        resp = await _get_client().get(
+            f"/api/v1/investments/wallets/{wallet_id}/assets",
+            headers=_headers(user_id),
+        )
+        resp.raise_for_status()
+        return resp.json()
+    except httpx.HTTPError as e:
+        log.error(
+            "Error listando activos: %s — %s",
+            e,
+            getattr(e, "response", None) and e.response.text,
+        )
+        return []
+
+
+async def create_asset_operation(
+    user_id: UUID,
+    asset_id: UUID,
+    op_type: str,
+    quantity: Decimal,
+    price_per_unit: Decimal,
+    total_amount: Decimal,
+    fees: Decimal,
+    op_date: date,
+    notes: str | None = None,
+) -> tuple[dict | None, str | None]:
+    """POST /investments/assets/{asset_id}/operations. Devuelve (data, error_mensaje)."""
+    payload: dict[str, Any] = {
+        "asset_id": str(asset_id),
+        "type": op_type,
+        "quantity": _decimal_json(quantity),
+        "price_per_unit": _decimal_json(price_per_unit),
+        "total_amount": _decimal_json(total_amount),
+        "fees": _decimal_json(fees),
+        "date": op_date.isoformat(),
+    }
+    if notes:
+        payload["notes"] = notes
+
+    try:
+        resp = await _get_client().post(
+            f"/api/v1/investments/assets/{asset_id}/operations",
+            json=payload,
+            headers=_headers(user_id),
+        )
+        if resp.status_code >= 400:
+            err = _http_error_detail(resp)
+            log.error("Error creando operacion activo: %s — %s", resp.status_code, err)
+            return None, err
+        return resp.json(), None
+    except httpx.HTTPError as e:
+        msg = getattr(e, "response", None) and e.response.text or str(e)
+        log.error("Error creando operacion activo: %s", e)
+        return None, msg

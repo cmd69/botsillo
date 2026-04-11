@@ -1,5 +1,6 @@
 """Formato de fechas, importes y campos de API para mensajes del bot."""
 from datetime import date
+from decimal import Decimal, InvalidOperation
 
 
 def fmt_date_ddmmyyyy(iso: str) -> str:
@@ -23,3 +24,23 @@ def parse_positive_amount(raw: str) -> float | None:
     if amount <= 0:
         return None
     return amount
+
+
+def parse_non_negative_decimal(raw: str) -> Decimal | None:
+    """Parsea un decimal >= 0 (cantidades, comisiones)."""
+    text = raw.strip().replace(",", ".")
+    try:
+        d = Decimal(text)
+    except (InvalidOperation, ValueError, TypeError):
+        return None
+    if d < 0:
+        return None
+    return d
+
+
+def parse_positive_decimal(raw: str) -> Decimal | None:
+    """Parsea un decimal estrictamente > 0."""
+    d = parse_non_negative_decimal(raw)
+    if d is None or d == 0:
+        return None
+    return d
