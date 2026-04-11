@@ -28,8 +28,7 @@ class PortfolioFlow(StatesGroup):
     """Consulta u operacion (buy/sell) en billetera de inversion."""
 
     picking_wallet = State()
-    consult_after_ficha = State()
-    op_after_ficha = State()
+    wallet_hub = State()
     op_asset = State()
     op_quantity = State()
     op_price = State()
@@ -40,7 +39,6 @@ class PortfolioFlow(StatesGroup):
     op_notes = State()
     op_confirm = State()
     # Movimiento de capital (EUR -> billetera)
-    mov_after_ficha = State()
     mov_bank = State()
     mov_pick_dir = State()
     mov_amount = State()

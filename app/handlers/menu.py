@@ -9,7 +9,8 @@ from app.category_utils import roots as root_categories
 from app.db import User
 from app.keyboards.categories import categories_kb
 from app.keyboards.date_picker import month_step_kb
-from app.keyboards.main_menu import expenses_menu_kb, main_menu_kb, portfolio_menu_kb
+from app.handlers.portfolio import open_portfolio_from_menu
+from app.keyboards.main_menu import expenses_menu_kb, main_menu_kb
 from app.states import ExpenseFlow, IncomeFlow
 
 router = Router(name="menu")
@@ -34,14 +35,8 @@ async def cb_root_expenses(callback: CallbackQuery, state: FSMContext) -> None:
 
 
 @router.callback_query(F.data == "menu:root_portfolio")
-async def cb_root_portfolio(callback: CallbackQuery, state: FSMContext) -> None:
-    await state.clear()
-    await callback.message.edit_text(
-        "<b>Portfolio</b>: consultar, transacciones de activos o movimientos de capital.",
-        reply_markup=portfolio_menu_kb(),
-        parse_mode="HTML",
-    )
-    await callback.answer()
+async def cb_root_portfolio(callback: CallbackQuery, state: FSMContext, user: User) -> None:
+    await open_portfolio_from_menu(callback, state, user)
 
 
 @router.message(Command("gasto"))
