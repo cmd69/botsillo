@@ -1,6 +1,7 @@
 """Portfolio: consultar billeteras y registrar operaciones buy/sell (API Expensivo)."""
 from __future__ import annotations
 
+import html
 from datetime import date
 from decimal import Decimal
 from uuid import UUID
@@ -13,7 +14,6 @@ from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMar
 from app.api_client import (
     create_asset_operation,
     create_capital_contribution,
-    get_wallet_details,
     get_wallet_summary,
     list_bank_accounts,
     list_investment_wallets,
@@ -64,10 +64,11 @@ def _usdt_qty(assets: list[dict]) -> Decimal:
 
 
 def _summary_ficha_text(name: str, summary: dict) -> str:
+    safe_name = html.escape(name or "", quote=False)
     assets = summary.get("assets") or []
     usdt = _usdt_qty(assets)
     lines = [
-        f"🏦 <b>{name}</b>\n",
+        f"🏦 <b>{safe_name}</b>\n",
         f"💶 Aportado: <b>{fmt_fiat_or_usdt_2dp(summary.get('total_contributed'))}</b> €",
         f"📊 Invertido: <b>{fmt_fiat_or_usdt_2dp(summary.get('total_invested'))}</b>",
         f"💹 Valor actual: <b>{fmt_fiat_or_usdt_2dp(summary.get('current_value'))}</b>",
@@ -78,43 +79,99 @@ def _summary_ficha_text(name: str, summary: dict) -> str:
     return "\n".join(lines)
 
 
-def _details_full_text(d: dict) -> str:
-    name = d.get("name") or "Billetera"
-    parts = [f"📋 <b>{name}</b> — detalle\n"]
+def _fmt_unit_price(val: object) -> str:
+    """Precio por unidad (USDT): hasta 6 decimales, sin ceros finales innecesarios."""
+    if val is None:
+        return "-"
+    try:
+        d = Decimal(str(val))
+    except Exception:
+        return str(val)
+    q = d.quantize(Decimal("0.000001"))
+    s = format(q, "f")
+    if "." in s:
+        s = s.rstrip("0").rstrip(".")
+    return s or "0"
 
-    assets = d.get("assets") or []
-    parts.append("\n<b>Activos</b>")
-    if not assets:
-        parts.append("  (ninguno)")
-    else:
-        for a in assets[:30]:
-            sym = a.get("symbol", "?")
-            aname = a.get("name", "")
-            price = a.get("current_price")
-            parts.append(f"  • <b>{sym}</b> {aname} — precio {fmt_fiat_or_usdt_2dp(price)}")
-        if len(assets) > 30:
-            parts.append(f"  … y {len(assets) - 30} mas (ver en Expensivo)")
 
-    contribs = sorted(
-        d.get("capital_contributions") or [],
-        key=lambda x: str(x.get("date") or ""),
+def _wallet_detail_html(summary: dict) -> str:
+    """
+    Detalle en HTML (Telegram): cabecera = mismo resumen que el hub; activos con
+    cantidad, PM, precio actual, valor y coste (API WalletSummary / AssetHoldings).
+    """
+    name = summary.get("wallet_name") or "Billetera"
+    parts: list[str] = [
+        _summary_ficha_text(name, summary),
+        "",
+        "<i>╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌</i>",
+        "",
+        "<b>📊 Posiciones</b>",
+        "<i>Importes según precios actuales y operaciones en Expensivo.</i>",
+        "",
+    ]
+
+    raw_assets = list(summary.get("assets") or [])
+
+    def _qty(h: dict) -> Decimal:
+        try:
+            return Decimal(str(h.get("quantity", 0)))
+        except Exception:
+            return Decimal(0)
+
+    holdings = [h for h in raw_assets if _qty(h) != 0]
+    holdings.sort(
+        key=lambda h: abs(float(h.get("current_value") or h.get("total_cost") or 0)),
         reverse=True,
     )
-    parts.append("\n<b>Aportes de capital</b> (ultimos 15)")
-    if not contribs:
-        parts.append("  (ninguno)")
+
+    if not holdings:
+        parts.append("<i>Sin posiciones con saldo.</i>")
     else:
-        for c in contribs[:15]:
-            amt = c.get("amount")
-            cdate = c.get("date", "")
-            desc = (c.get("description") or "-")[:40]
-            parts.append(f"  • {cdate}  {fmt_fiat_or_usdt_2dp(amt)} €  {desc}")
-        if len(contribs) > 15:
-            parts.append(f"  … y {len(contribs) - 15} mas en la web")
+        shown = holdings[:25]
+        for idx, h in enumerate(shown):
+            sym = html.escape(str(h.get("symbol") or "?"), quote=False)
+            aname = html.escape(str(h.get("name") or ""), quote=False)
+            title = f"<b>{sym}</b>"
+            if aname:
+                title += f" · <i>{aname}</i>"
+            pl = h.get("profit_loss")
+            pl_pct = h.get("profit_loss_percentage")
+            pl_prefix = ""
+            try:
+                if pl is not None and Decimal(str(pl)) > 0:
+                    pl_prefix = "+"
+            except Exception:
+                pass
+            pl_s = f"{pl_prefix}{fmt_fiat_or_usdt_2dp(pl)}" if pl is not None else "-"
+            pct_s = ""
+            if pl_pct is not None:
+                try:
+                    p = Decimal(str(pl_pct))
+                    pp = "+" if p > 0 else ""
+                    pct_s = f" ({pp}{fmt_fiat_or_usdt_2dp(p)}%)"
+                except Exception:
+                    pct_s = ""
+
+            parts.append(f"▸ {title}")
+            parts.append(
+                f"   <b>Cantidad</b> <code>{fmt_crypto_qty(h.get('quantity'))}</code>"
+                f" · <b>P. medio</b> <code>{_fmt_unit_price(h.get('average_price'))}</code>"
+                f" · <b>P. actual</b> <code>{_fmt_unit_price(h.get('current_price'))}</code>"
+            )
+            parts.append(
+                f"   <b>Valor</b> {fmt_fiat_or_usdt_2dp(h.get('current_value'))} USDT"
+                f" · <b>Coste</b> {fmt_fiat_or_usdt_2dp(h.get('total_cost'))} USDT"
+            )
+            parts.append(f"   <b>P/L</b> {pl_s} USDT{pct_s}")
+            if idx < len(shown) - 1:
+                parts.append("")
+        if len(holdings) > 25:
+            parts.append("")
+            parts.append(f"<i>… y {len(holdings) - 25} mas en Expensivo</i>")
 
     text = "\n".join(parts)
     if len(text) > _MAX_MSG:
-        text = text[: _MAX_MSG - 40] + "\n\n… (truncado; abre Expensivo para ver todo)"
+        text = text[: _MAX_MSG - 50] + "\n\n<i>… mensaje truncado</i>"
     return text
 
 
@@ -395,12 +452,12 @@ async def pf_wallet_detail(callback: CallbackQuery, state: FSMContext, user: Use
         await callback.answer()
         return
 
-    det = await get_wallet_details(user.id, wallet_id)
-    if not det:
+    summary = await get_wallet_summary(user.id, wallet_id)
+    if not summary:
         await callback.answer("No se pudo cargar el detalle.", show_alert=True)
         return
 
-    text = _details_full_text(det)
+    text = _wallet_detail_html(summary)
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="↩️ Atrás", callback_data="pf:hub_resume")],
     ])
